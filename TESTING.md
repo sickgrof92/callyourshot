@@ -20,11 +20,17 @@ The plan size (500 credits) and renewal day (16th) are already filled in. When y
 
 Render's free plan puts the server to sleep after 15 minutes with no visitors. While it sleeps, it can't update lines or grade picks, and the first request after a nap takes up to a minute.
 
-The repo includes a GitHub Action that pings the server every 10 minutes to keep it awake. To turn it on:
+The repo includes a GitHub workflow called **"Keep Render server awake (pings every 10 min)"**. It visits your server every 10 minutes so it never falls asleep. It needs to know your Render URL, which you save as a repository *variable* (not a secret):
 
-1. On GitHub, open the repo's **Settings** > **Secrets and variables** > **Actions** > **Variables** tab.
-2. Click **New repository variable**. Name it `RENDER_URL` and paste your Render URL as the value.
-3. That's it. You can confirm it under the repo's **Actions** tab ("Keep API awake").
+1. Open your repo on GitHub and click the **Settings** tab (top right of the repo page).
+2. In the left menu, click **Secrets and variables**, then **Actions**.
+3. Click the **Variables** tab (next to "Secrets").
+4. Click **New repository variable**.
+5. Name: `RENDER_URL`
+6. Value: your Render URL with nothing after it, like `https://callyourshot-api.onrender.com`
+7. Click **Add variable**.
+
+Check that it works: click the repo's **Actions** tab, then **Keep Render server awake** in the left list, then **Run workflow** > **Run workflow**. Open the new run. It should show a green check and a note saying "Server is awake". If it shows a yellow warning saying "RENDER_URL not set", go back and check step 5. After this it runs on its own every 10 minutes.
 
 ### Good to know about the free plan
 
