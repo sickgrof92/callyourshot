@@ -16,7 +16,7 @@ export default function Welcome() {
     setError(null);
     try {
       await signUp(name.trim());
-      router.replace('/');
+      router.replace('/earn');
     } catch (err) {
       if (!(err instanceof ApiError)) setError(`Couldn't reach the server at ${API_URL}. It may be waking up, so try again in a minute. If this address isn't your Render URL, see "Troubleshooting" in TESTING.md.`);
       else setError(err.status === 409 ? 'That name is taken.' : 'Use 3-20 letters, numbers, dots or underscores.');
@@ -30,8 +30,8 @@ export default function Welcome() {
       <View style={styles.inner}>
         <Text style={styles.logo}>Call Your Shot</Text>
         <Text style={styles.pitch}>
-          Make picks on real games with free points. Watch a short video to earn 10 points. Top the weekly or monthly
-          leaderboard to win the announced prize.
+          Make picks on real games with free points. Watch a short video to get 10 points to start. Top the weekly or
+          monthly leaderboard to win the announced prize.
         </Text>
         <Text style={styles.label}>Pick a display name</Text>
         <TextInput

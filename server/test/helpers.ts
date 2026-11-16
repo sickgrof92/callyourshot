@@ -1,3 +1,4 @@
+import { createAdSession, grantAdReward } from '../src/ads.ts';
 import { loadConfig, type Config } from '../src/config.ts';
 import { openDb, type DB } from '../src/db.ts';
 import type { ApiResult, EventSummary, OddsApi, OddsEvent, ScoreEvent } from '../src/oddsApi.ts';
@@ -99,4 +100,13 @@ export class FakeOddsApi implements OddsApi {
       });
     return this.charge('scores', sport, 2, list);
   }
+}
+
+/** Watch (in stub form) the ad that every pick requires, returning its session id. */
+export function pickAd(db: DB, cfg: Config, userId: string, now: number): string {
+  const s = createAdSession(db, cfg, userId, 'pick', now);
+  if (!s.ok) throw new Error(s.reason);
+  const g = grantAdReward(db, cfg, s.sessionId, `test:${s.sessionId}`, now);
+  if (!g.ok) throw new Error(g.reason);
+  return s.sessionId;
 }

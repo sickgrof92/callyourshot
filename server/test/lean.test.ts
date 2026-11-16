@@ -4,7 +4,7 @@ import { placePick } from '../src/picks.ts';
 import { postLedger } from '../src/points.ts';
 import { tick } from '../src/scheduler.ts';
 import { sportsDay } from '../src/time.ts';
-import { et, FakeOddsApi, testConfig, testDb, type FakeGame } from './helpers.ts';
+import { et, FakeOddsApi, pickAd, testConfig, testDb, type FakeGame } from './helpers.ts';
 
 const MIN = 60_000;
 
@@ -46,7 +46,7 @@ describe('free tier (500 credits a month)', () => {
       const day = sportsDay(t, cfg.timeZone, cfg.dayStartHour);
       if (t - day.start >= 10 * 60 * MIN && t - day.start < 10 * 60 * MIN + 5 * MIN) {
         for (const g of games.filter((x) => x.start > t && x.start < day.end)) {
-          if (placePick(db, cfg, 'u', { eventId: g.id, market: 'moneyline', selection: 'home', points: 10 }, t).ok) placed++;
+          if (placePick(db, cfg, 'u', { eventId: g.id, market: 'moneyline', selection: 'home', points: 10, adSessionId: pickAd(db, cfg, 'u', t) }, t).ok) placed++;
         }
       }
       await tick(db, cfg, api, t);
@@ -88,10 +88,14 @@ describe('lean sport rotation', () => {
       plan('basketball_nba', 9, dayStart - 2 * 86400_000),
       plan('americanfootball_nfl', 1, null), // never refreshed
       plan('icehockey_nhl', 8, dayStart - 3600_000),
+      plan('americanfootball_ncaaf', 0, null), // no games today: never picked, even though it waited longest
     ];
     expect(leanLineSports(plans, 15, 3, dayStart)).toEqual(['americanfootball_nfl', 'basketball_nba']);
     // After NBA refreshes today it keeps its slot rather than freeing one up.
     plans[1].lastOddsAt = dayStart + 3600_000;
     expect(leanLineSports(plans, 15, 3, dayStart)).toEqual(['basketball_nba', 'americanfootball_nfl']);
+    // With a big budget every sport playing today gets a slot, and still not the idle one.
+    expect(leanLineSports(plans, 59, 3, dayStart)).not.toContain('americanfootball_ncaaf');
+    expect(leanLineSports(plans, 59, 3, dayStart)).toHaveLength(4);
   });
 });

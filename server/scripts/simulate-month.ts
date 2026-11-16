@@ -9,7 +9,7 @@ import { placePick } from '../src/picks.ts';
 import { postLedger } from '../src/points.ts';
 import { tick } from '../src/scheduler.ts';
 import { sportsDay } from '../src/time.ts';
-import { et, FakeOddsApi, testConfig, testDb, type FakeGame } from '../test/helpers.ts';
+import { et, FakeOddsApi, pickAd, testConfig, testDb, type FakeGame } from '../test/helpers.ts';
 
 const cfg = testConfig({ monthlyCredits: loadConfig().monthlyCredits });
 const db = testDb();
@@ -38,7 +38,7 @@ for (let t = start; t <= end; t += 5 * 60_000) {
   const sd = sportsDay(t, cfg.timeZone, cfg.dayStartHour);
   if (t - sd.start >= 10 * 3600_000 && t - sd.start < 10 * 3600_000 + 5 * 60_000) {
     for (const g of games.filter((x) => x.start > t && x.start < sd.end)) {
-      placePick(db, cfg, 'u', { eventId: g.id, market: 'moneyline', selection: 'home', points: 10 }, t);
+      placePick(db, cfg, 'u', { eventId: g.id, market: 'moneyline', selection: 'home', points: 10, adSessionId: pickAd(db, cfg, 'u', t) }, t);
     }
   }
   const before = api.used;

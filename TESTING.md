@@ -83,10 +83,12 @@ The message shows the address the app is trying. If it says `http://localhost:80
 ## Part 3: Try it
 
 1. Pick a display name.
-2. Go to **Earn** and tap **Watch video**. In test mode a fake 5-second video plays; collect your 10 points. Do this a few times.
-3. Go to **Games**, pick a sport, and tap a line to make a pick.
-4. Check **My Picks** after the game ends. Picks are graded a few hours after games finish (on the free plan, scores are checked a few times a day).
-5. **Leaders** shows the weekly and monthly boards.
+2. On the **Points** tab, tap **Watch video for 10 points**. In test mode a fake 5-second video plays instead of a real ad.
+3. Go to **Games**, pick a sport, and tap a line. Tap **Watch ad to confirm pick**, let the ad finish, then tap **Confirm pick**.
+4. Once you're at 0 points with no picks in play, the Points tab lets you watch for 10 more (up to 5 times a day, counting the first).
+5. After a game starts, **My Picks** shows a red **FORFEIT THIS PICK** button on that pick. Forfeiting counts it as a loss, so you can get back to 0 and watch for new points sooner.
+6. Check **My Picks** after the game ends. Picks are graded a few hours after games finish (on the free plan, scores are checked a few times a day).
+7. **Leaders** shows the weekly and monthly boards.
 
 Lines only appear after the server's first update for that sport. On the free plan, 2 or 3 sports get fresh lines each day, about 2 hours before their first game, and the sports take turns. A sport that shows "Lines coming soon" will usually have lines later today or tomorrow. If a sport shows no games, try another one or check back later.
 

@@ -5,7 +5,7 @@ import { placePick } from '../src/picks.ts';
 import { postLedger } from '../src/points.ts';
 import { estimateOddsCalls, FAR_INTERVAL, NEAR_INTERVAL, NEAR_WINDOW, nextOddsDue, tick } from '../src/scheduler.ts';
 import { sportsDay } from '../src/time.ts';
-import { et, FakeOddsApi, testConfig, testDb, type FakeGame } from './helpers.ts';
+import { et, FakeOddsApi, pickAd, testConfig, testDb, type FakeGame } from './helpers.ts';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -86,7 +86,7 @@ describe('scheduler over a busy Saturday', () => {
     await runTicks(db, cfg, api, start, et(2026, 11, 22, 5), MIN, (t) => {
       if (t === et(2026, 11, 21, 11)) {
         for (const g of games.filter((x) => x.start < et(2026, 11, 22, 0) && x.sport !== 'americanfootball_nfl')) {
-          const r = placePick(db, cfg, 'u1', { eventId: g.id, market: 'spread', selection: 'home', points: 10 }, t);
+          const r = placePick(db, cfg, 'u1', { eventId: g.id, market: 'spread', selection: 'home', points: 10, adSessionId: pickAd(db, cfg, 'u1', t) }, t);
           if (r.ok) placed++;
         }
       }
@@ -144,7 +144,7 @@ describe('scheduler over a busy Saturday', () => {
     await tick(db, cfg, api, start); // loads events + first lines
     giveUserPoints(db, 'u1', 100, start);
     const g = games.find((x) => x.sport === 'basketball_nba')!;
-    expect(placePick(db, cfg, 'u1', { eventId: g.id, market: 'total', selection: 'under', points: 10 }, start).ok).toBe(true);
+    expect(placePick(db, cfg, 'u1', { eventId: g.id, market: 'total', selection: 'under', points: 10, adSessionId: pickAd(db, cfg, 'u1', start) }, start).ok).toBe(true);
 
     api.remaining = 1900; // under the 2000 reserve
     const before = api.calls.length;

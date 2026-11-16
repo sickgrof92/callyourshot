@@ -5,6 +5,7 @@ import { api, ApiError, type Game, type LineQuote, type Market, type Selection }
 import { lineLabel, marketName, signed } from '../lib/format';
 import { useSession } from '../lib/session';
 import { colors, space } from '../lib/theme';
+import { useAd } from '../lib/useAd';
 
 export interface PickTarget {
   game: Game;
@@ -28,11 +29,15 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
   const [quote, setQuote] = useState<LineQuote | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Every pick needs its own ad. Once watched, the player confirms on a second screen.
+  const [adSessionId, setAdSessionId] = useState<string | null>(null);
+  const { watch, adModal } = useAd();
 
   useEffect(() => {
     setPoints(MIN);
     setQuote(target?.quote ?? null);
     setMessage(null);
+    setAdSessionId(null);
   }, [target]);
 
   if (!target || !quote) return null;
@@ -41,12 +46,26 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
   const maxPoints = Math.min(MAX, balance);
   const tooFew = balance < MIN;
 
-  async function confirm() {
-    if (!token || !target || !quote) return;
+  async function watchAd() {
     setBusy(true);
     setMessage(null);
     try {
-      await api.makePick(token, { eventId: game.id, market, selection, points, expectedPoint: quote.point, expectedPrice: quote.price });
+      const id = await watch('pick');
+      if (id) setAdSessionId(id);
+      else setMessage('Watch the whole ad to confirm your pick.');
+    } catch {
+      setMessage('No ad is available right now. Try again in a minute.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirm() {
+    if (!token || !target || !quote || !adSessionId) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api.makePick(token, { eventId: game.id, market, selection, points, expectedPoint: quote.point, expectedPrice: quote.price, adSessionId });
       await refresh();
       onPlaced();
     } catch (err) {
@@ -58,7 +77,11 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
           setMessage('The line just changed. Check the new number and confirm again.');
         } else if (err.code === 'locked') setMessage('This game has started, so picks are locked.');
         else if (err.code === 'already_picked') setMessage(`You already have a ${marketName[market].toLowerCase()} pick on this game.`);
-        else if (err.code === 'not_enough_points') setMessage('Not enough points. Watch a video to earn more.');
+        else if (err.code === 'not_enough_points') setMessage("You don't have enough points for this pick.");
+        else if (err.code === 'pick_ad_required') {
+          setAdSessionId(null);
+          setMessage('That ad has expired. Watch another to confirm your pick.');
+        }
         else setMessage('Something went wrong. Try again.');
       } else setMessage('Could not reach the server.');
     } finally {
@@ -86,8 +109,27 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
               router.push('/earn');
             }}
           >
-            <Text style={styles.btnText}>Earn points to make this pick</Text>
+            <Text style={styles.btnText}>Get points to make this pick</Text>
           </Pressable>
+        ) : adSessionId ? (
+          <>
+            <View style={styles.confirmBox}>
+              <Text style={styles.confirmTitle}>Confirm your pick</Text>
+              <Text style={styles.confirmLine}>
+                {points} pts on {lineLabel(market, selection, quote.point, game.homeTeam, game.awayTeam)}
+              </Text>
+              <Text style={styles.ret}>
+                Win and get back <Text style={{ color: colors.win, fontWeight: '800' }}>{winReturn(points, quote.price)} pts</Text>
+              </Text>
+            </View>
+            {message && <Text style={styles.msg}>{message}</Text>}
+            <Pressable style={styles.btn} disabled={busy} onPress={confirm}>
+              {busy ? <ActivityIndicator color={colors.accentText} /> : <Text style={styles.btnText}>Confirm pick</Text>}
+            </Pressable>
+            <Pressable style={styles.cancel} onPress={onClose}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+          </>
         ) : (
           <>
             <View style={styles.stepper}>
@@ -112,12 +154,13 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
               Win and get back <Text style={{ color: colors.win, fontWeight: '800' }}>{winReturn(points, quote.price)} pts</Text>
             </Text>
             {message && <Text style={styles.msg}>{message}</Text>}
-            <Pressable style={styles.btn} disabled={busy} onPress={confirm}>
-              {busy ? <ActivityIndicator color={colors.accentText} /> : <Text style={styles.btnText}>Lock in pick</Text>}
+            <Pressable style={styles.btn} disabled={busy} onPress={watchAd}>
+              {busy ? <ActivityIndicator color={colors.accentText} /> : <Text style={styles.btnText}>Watch ad to confirm pick</Text>}
             </Pressable>
           </>
         )}
       </View>
+      {adModal}
     </Modal>
   );
 }
@@ -141,4 +184,9 @@ const styles = StyleSheet.create({
   msg: { color: colors.accent, textAlign: 'center' },
   btn: { backgroundColor: colors.accent, borderRadius: 12, padding: space.md, alignItems: 'center' },
   btnText: { color: colors.accentText, fontWeight: '800', fontSize: 17 },
+  confirmBox: { backgroundColor: colors.cardAlt, borderRadius: 12, padding: space.lg, gap: space.sm, alignItems: 'center' },
+  confirmTitle: { color: colors.accent, fontWeight: '800', letterSpacing: 1 },
+  confirmLine: { color: colors.text, fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  cancel: { alignItems: 'center', padding: space.sm },
+  cancelText: { color: colors.muted },
 });

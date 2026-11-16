@@ -27,8 +27,12 @@ export interface Me {
   id: string;
   displayName: string;
   balance: number;
-  adsWatchedToday: number;
-  adDailyCap: number;
+  minPickPoints: number;
+  /** Out of points with nothing in play, and videos for points left today. */
+  canEarnPoints: boolean;
+  picksInPlay: number;
+  pointsAdsToday: number;
+  pointsAdsPerDay: number;
   adRewardPoints: number;
   weeklyScore: number;
   monthlyScore: number;
@@ -44,6 +48,7 @@ export interface Pick {
   points: number;
   status: 'pending' | 'won' | 'lost' | 'push' | 'void';
   payout: number | null;
+  forfeited_at: number | null;
   sport: string;
   home_team: string;
   away_team: string;
@@ -58,6 +63,8 @@ export interface Leaderboard {
   standings: { rank: number; displayName: string; score: number }[];
   me: { score: number; rank: number | null } | null;
 }
+
+export type AdPurpose = 'points' | 'pick' | 'forfeit';
 
 export class ApiError extends Error {
   constructor(
@@ -97,11 +104,25 @@ export const api = {
   lines: (sport: string) => request<{ sport: string; events: Game[] }>(`/lines?sport=${encodeURIComponent(sport)}`),
   makePick: (
     token: string,
-    body: { eventId: string; market: Market; selection: Selection; points: number; expectedPoint: number | null; expectedPrice: number },
+    body: {
+      eventId: string;
+      market: Market;
+      selection: Selection;
+      points: number;
+      expectedPoint: number | null;
+      expectedPrice: number;
+      adSessionId: string;
+    },
   ) => request<{ pickId: string; balance: number }>('/picks', { method: 'POST', body, token }),
   myPicks: (token: string) => request<{ picks: Pick[] }>('/picks', { token }),
-  startAd: (token: string) =>
-    request<{ sessionId: string; rewardPoints: number; provider: 'stub' | 'admob' }>('/ads/sessions', { method: 'POST', token }),
+  forfeitPick: (token: string, pickId: string, adSessionId: string) =>
+    request<{ balance: number }>(`/picks/${pickId}/forfeit`, { method: 'POST', body: { adSessionId }, token }),
+  startAd: (token: string, purpose: AdPurpose) =>
+    request<{ sessionId: string; rewardPoints: number; provider: 'stub' | 'admob' }>('/ads/sessions', {
+      method: 'POST',
+      body: { purpose },
+      token,
+    }),
   adStatus: (token: string, id: string) => request<{ rewarded: boolean; balance: number }>(`/ads/sessions/${id}`, { token }),
   completeStubAd: (token: string, id: string) =>
     request<{ rewarded: boolean; balance: number }>(`/ads/sessions/${id}/stub-complete`, { method: 'POST', token }),

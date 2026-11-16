@@ -38,7 +38,7 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Games', tabBarIcon: icon('american-football') }} />
-      <Tabs.Screen name="earn" options={{ title: 'Earn', tabBarIcon: icon('play-circle') }} />
+      <Tabs.Screen name="earn" options={{ title: 'Points', tabBarIcon: icon('play-circle') }} />
       <Tabs.Screen name="leaderboard" options={{ title: 'Leaders', tabBarIcon: icon('trophy') }} />
       <Tabs.Screen name="mypicks" options={{ title: 'My Picks', tabBarIcon: icon('list') }} />
     </Tabs>

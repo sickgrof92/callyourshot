@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS picks (
   payout      INTEGER,
   created_at  INTEGER NOT NULL,
   settled_at  INTEGER,
+  forfeited_at INTEGER,
   UNIQUE (user_id, event_id, market)
 );
 CREATE INDEX IF NOT EXISTS picks_pending ON picks(status, event_id);
@@ -81,9 +82,12 @@ CREATE INDEX IF NOT EXISTS picks_pending ON picks(status, event_id);
 CREATE TABLE IF NOT EXISTS ad_sessions (
   id             TEXT PRIMARY KEY,
   user_id        TEXT NOT NULL REFERENCES users(id),
+  purpose        TEXT NOT NULL DEFAULT 'points' CHECK (purpose IN ('points','pick','forfeit')),
   created_at     INTEGER NOT NULL,
   rewarded_at    INTEGER,
-  transaction_id TEXT UNIQUE
+  transaction_id TEXT UNIQUE,
+  used_at        INTEGER,
+  used_for       TEXT
 );
 CREATE INDEX IF NOT EXISTS ad_sessions_user ON ad_sessions(user_id, rewarded_at);
 
@@ -130,8 +134,23 @@ export function openDb(path: string): DB {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+  migrate(db);
   db.exec(SCHEMA);
   return db;
+}
+
+/** Bring databases created by older versions up to the current schema. */
+function migrate(db: DB): void {
+  const cols = db.prepare("SELECT name FROM pragma_table_info('ad_sessions')").all() as { name: string }[];
+  if (cols.length === 0) return; // fresh database
+  const has = (c: string) => cols.some((x) => x.name === c);
+  if (!has('purpose')) {
+    db.exec("ALTER TABLE ad_sessions ADD COLUMN purpose TEXT NOT NULL DEFAULT 'points' CHECK (purpose IN ('points','pick','forfeit'))");
+  }
+  if (!has('used_at')) db.exec('ALTER TABLE ad_sessions ADD COLUMN used_at INTEGER');
+  if (!has('used_for')) db.exec('ALTER TABLE ad_sessions ADD COLUMN used_for TEXT');
+  const pickCols = db.prepare("SELECT name FROM pragma_table_info('picks')").all() as { name: string }[];
+  if (pickCols.length && !pickCols.some((x) => x.name === 'forfeited_at')) db.exec('ALTER TABLE picks ADD COLUMN forfeited_at INTEGER');
 }
 
 /** Run fn inside a write transaction. */
