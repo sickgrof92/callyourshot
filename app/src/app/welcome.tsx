@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { ApiError } from '../lib/api';
+import { API_URL, ApiError } from '../lib/api';
 import { useSession } from '../lib/session';
 import { colors, space } from '../lib/theme';
 
@@ -18,7 +18,7 @@ export default function Welcome() {
       await signUp(name.trim());
       router.replace('/');
     } catch (err) {
-      if (!(err instanceof ApiError)) setError("Couldn't reach the server. It may be waking up, so try again in a minute.");
+      if (!(err instanceof ApiError)) setError(`Couldn't reach the server at ${API_URL}. It may be waking up, so try again in a minute. If this address isn't your Render URL, see "Troubleshooting" in TESTING.md.`);
       else setError(err.status === 409 ? 'That name is taken.' : 'Use 3-20 letters, numbers, dots or underscores.');
     } finally {
       setBusy(false);

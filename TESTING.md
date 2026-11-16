@@ -70,6 +70,16 @@ You need a computer (Mac or Windows) on the same Wi-Fi as your phone.
 
 If your phone can't connect, stop it with Ctrl+C and run `npx expo start --tunnel` instead.
 
+## Troubleshooting: "Couldn't reach the server"
+
+The message shows the address the app is trying. If it says `http://localhost:8080`, the app didn't find your Render URL.
+
+1. **Is the server up?** On your phone's browser, open your Render URL with `/health` on the end. Wait up to a minute. You should see `{"ok":true}`. If not, check the service's **Logs** in Render.
+2. **Check the address file.** In the `app` folder there must be a file named exactly `.env.local` containing `EXPO_PUBLIC_API_URL=https://your-url.onrender.com` (no `/health`, no slash at the end).
+   - **Windows:** Notepad may have saved it as `.env.local.txt`. In File Explorer turn on **View** > **Show** > **File name extensions** and rename it if needed.
+   - **Mac:** dot files are hidden in Finder; press Cmd+Shift+. to show them.
+3. **Restart with a clean start.** The address is only read when the app starts. Press Ctrl+C in the terminal, run `npx expo start --clear`, and scan the QR code again.
+
 ## Part 3: Try it
 
 1. Pick a display name.

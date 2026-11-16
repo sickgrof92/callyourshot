@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PickSheet, type PickTarget } from '../../components/PickSheet';
-import { api, type Game, type Market, type Selection } from '../../lib/api';
+import { api, API_URL, type Game, type Market, type Selection } from '../../lib/api';
 import { ago, gameTime, signed } from '../../lib/format';
 import { colors, space } from '../../lib/theme';
 
@@ -77,7 +77,7 @@ export default function Games() {
         setSports(s);
         setSport((cur) => cur ?? s[0]?.key ?? null);
       })
-      .catch(() => setError("Couldn't reach the server. It may be waking up, so pull down to refresh in a minute."));
+      .catch(() => setError(`Couldn't reach the server at ${API_URL}. It may be waking up, so pull down to refresh in a minute.`));
   }, []);
 
   const load = useCallback(async () => {
