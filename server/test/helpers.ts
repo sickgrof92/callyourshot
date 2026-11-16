@@ -5,7 +5,7 @@ import type { ApiResult, EventSummary, OddsApi, OddsEvent, ScoreEvent } from '..
 import { zonedToEpoch } from '../src/time.ts';
 
 export function testConfig(over: Partial<Config> = {}): Config {
-  return { ...loadConfig(), dbPath: ':memory:', adminToken: 'admin-secret', monthlyCredits: 20000, ...over };
+  return { ...loadConfig(), dbPath: ':memory:', adminToken: 'admin-secret', monthlyCredits: 20000, claimsKey: 'test-claims-key', ...over };
 }
 
 export function testDb(): DB {
@@ -109,4 +109,38 @@ export function pickAd(db: DB, cfg: Config, userId: string, now: number): string
   const g = grantAdReward(db, cfg, s.sessionId, `test:${s.sessionId}`, now);
   if (!g.ok) throw new Error(g.reason);
   return s.sessionId;
+}
+
+let signUps = 0;
+/** Sign up a new player through stub Apple sign-in, with a unique email and phone. */
+export async function signUpPlayer(
+  app: { inject: (o: object) => Promise<{ statusCode: number; json(): any }> },
+  name: string,
+  where: { country: 'US' | 'CA'; region: string } = { country: 'US', region: 'NY' },
+): Promise<string> {
+  const n = ++signUps;
+  const res = await app.inject({
+    method: 'POST',
+    url: '/auth/signin',
+    payload: {
+      provider: 'apple',
+      idToken: `stub-device-${name}-${n}`,
+      profile: { displayName: name, email: `${name}${n}@example.com`, phone: `+1555${String(1000000 + n).slice(-7)}`, ...where, acceptedTerms: true },
+    },
+  });
+  if (res.statusCode !== 200) throw new Error(`sign up failed: ${JSON.stringify(res.json())}`);
+  return res.json().token as string;
+}
+
+/** A contest that runs for years, for tests that only care about picks and grading. */
+export const TEST_CONTEST = 'test-contest';
+
+/** Create a player in TEST_CONTEST holding `points`. */
+export function seedPlayer(db: DB, userId: string, points: number, at: number): void {
+  db.prepare('INSERT INTO users (id, display_name, token_hash, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING').run(userId, userId, `h-${userId}`, at);
+  db.prepare(
+    `INSERT INTO competitions (id, name, kind, prize, max_entries, starts_at, ends_at, created_at)
+     VALUES (?, 'Test', 'monthly', 'Test prize', 1000, 0, 4102444800000, 0) ON CONFLICT DO NOTHING`,
+  ).run(TEST_CONTEST);
+  db.prepare('INSERT INTO competition_entries (competition_id, user_id, joined_at, balance) VALUES (?, ?, ?, ?)').run(TEST_CONTEST, userId, at, points);
 }

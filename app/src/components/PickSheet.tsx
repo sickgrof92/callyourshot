@@ -1,10 +1,14 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { api, ApiError, type Game, type LineQuote, type Market, type Selection } from '../lib/api';
 import { lineLabel, marketName, signed } from '../lib/format';
+import { useContests } from '../lib/contests';
 import { useSession } from '../lib/session';
-import { colors, space } from '../lib/theme';
+import { tap } from '../lib/haptics';
+import { colors, glow, space } from '../lib/theme';
+import { GameButton } from './GameButton';
+import { PointsCounter } from './PointsCounter';
 import { useAd } from '../lib/useAd';
 
 export interface PickTarget {
@@ -23,8 +27,9 @@ function winReturn(points: number, price: number) {
   return points + (price > 0 ? Math.floor((points * price) / 100) : Math.floor((points * 100) / Math.abs(price)));
 }
 
-export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | null; onClose: () => void; onPlaced: () => void }) {
-  const { token, me, refresh } = useSession();
+export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | null; onClose: () => void; onPlaced: (label: string, points: number) => void }) {
+  const { token } = useSession();
+  const { active, refresh } = useContests();
   const [points, setPoints] = useState(MIN);
   const [quote, setQuote] = useState<LineQuote | null>(null);
   const [busy, setBusy] = useState(false);
@@ -42,7 +47,7 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
 
   if (!target || !quote) return null;
   const { game, market, selection } = target;
-  const balance = me?.balance ?? 0;
+  const balance = active?.mine?.balance ?? 0;
   const maxPoints = Math.min(MAX, balance);
   const tooFew = balance < MIN;
 
@@ -61,13 +66,13 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
   }
 
   async function confirm() {
-    if (!token || !target || !quote || !adSessionId) return;
+    if (!token || !target || !quote || !adSessionId || !active) return;
     setBusy(true);
     setMessage(null);
     try {
-      await api.makePick(token, { eventId: game.id, market, selection, points, expectedPoint: quote.point, expectedPrice: quote.price, adSessionId });
+      await api.makePick(token, { competitionId: active.id, eventId: game.id, market, selection, points, expectedPoint: quote.point, expectedPrice: quote.price, adSessionId });
       await refresh();
-      onPlaced();
+      onPlaced(lineLabel(market, selection, quote.point, game.homeTeam, game.awayTeam), points);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === 'line_moved' && err.body.line) {
@@ -78,6 +83,8 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
         } else if (err.code === 'locked') setMessage('This game has started, so picks are locked.');
         else if (err.code === 'already_picked') setMessage(`You already have a ${marketName[market].toLowerCase()} pick on this game.`);
         else if (err.code === 'not_enough_points') setMessage("You don't have enough points for this pick.");
+        else if (err.code === 'after_contest_end') setMessage('This game starts after your contest ends, so it does not count in it.');
+        else if (err.code === 'contest_not_live' || err.code === 'not_joined') setMessage("This contest isn't running right now.");
         else if (err.code === 'pick_ad_required') {
           setAdSessionId(null);
           setMessage('That ad has expired. Watch another to confirm your pick.');
@@ -93,6 +100,7 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={styles.sheet}>
+        {active && <Text style={styles.contest}>IN: {active.name.toUpperCase()}</Text>}
         <Text style={styles.matchup}>
           {game.awayTeam} at {game.homeTeam}
         </Text>
@@ -102,15 +110,14 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
         </Text>
 
         {tooFew ? (
-          <Pressable
-            style={styles.btn}
+          <GameButton
+            title="Get points to make this pick"
+            icon="flash"
             onPress={() => {
               onClose();
               router.push('/earn');
             }}
-          >
-            <Text style={styles.btnText}>Get points to make this pick</Text>
-          </Pressable>
+          />
         ) : adSessionId ? (
           <>
             <View style={styles.confirmBox}>
@@ -123,9 +130,7 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
               </Text>
             </View>
             {message && <Text style={styles.msg}>{message}</Text>}
-            <Pressable style={styles.btn} disabled={busy} onPress={confirm}>
-              {busy ? <ActivityIndicator color={colors.accentText} /> : <Text style={styles.btnText}>Confirm pick</Text>}
-            </Pressable>
+            <GameButton title="Confirm pick" variant="go" size="lg" icon="checkmark-circle" busy={busy} heavy onPress={confirm} />
             <Pressable style={styles.cancel} onPress={onClose}>
               <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
@@ -133,19 +138,19 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
         ) : (
           <>
             <View style={styles.stepper}>
-              <Pressable style={styles.step} onPress={() => setPoints((p) => Math.max(MIN, p - 10))}>
+              <GameButton variant="neon" size="sm" style={styles.step} onPress={() => setPoints((p) => Math.max(MIN, p - 10))}>
                 <Text style={styles.stepText}>-</Text>
-              </Pressable>
-              <Text style={styles.points}>{points} pts</Text>
-              <Pressable style={styles.step} onPress={() => setPoints((p) => Math.min(maxPoints, p + 10))}>
+              </GameButton>
+              <PointsCounter value={points} suffix=" pts" style={[styles.points, glow(colors.accent, 10)]} />
+              <GameButton variant="neon" size="sm" style={styles.step} onPress={() => setPoints((p) => Math.min(maxPoints, p + 10))}>
                 <Text style={styles.stepText}>+</Text>
-              </Pressable>
+              </GameButton>
             </View>
             <View style={styles.chips}>
               {[...CHIPS.filter((c) => c <= maxPoints), maxPoints]
                 .filter((v, i, a) => a.indexOf(v) === i)
                 .map((c) => (
-                  <Pressable key={c} style={[styles.chip, points === c && styles.chipOn]} onPress={() => setPoints(c)}>
+                  <Pressable key={c} style={[styles.chip, points === c && styles.chipOn]} onPress={() => { tap(); setPoints(c); }}>
                     <Text style={[styles.chipText, points === c && styles.chipTextOn]}>{c === maxPoints ? `Max ${c}` : c}</Text>
                   </Pressable>
                 ))}
@@ -154,9 +159,7 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
               Win and get back <Text style={{ color: colors.win, fontWeight: '800' }}>{winReturn(points, quote.price)} pts</Text>
             </Text>
             {message && <Text style={styles.msg}>{message}</Text>}
-            <Pressable style={styles.btn} disabled={busy} onPress={watchAd}>
-              {busy ? <ActivityIndicator color={colors.accentText} /> : <Text style={styles.btnText}>Watch ad to confirm pick</Text>}
-            </Pressable>
+            <GameButton title="Watch ad to confirm pick" size="lg" icon="play-circle" busy={busy} onPress={watchAd} />
           </>
         )}
       </View>
@@ -166,27 +169,26 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  sheet: { backgroundColor: colors.card, padding: space.xl, paddingBottom: 40, borderTopLeftRadius: 20, borderTopRightRadius: 20, gap: space.md },
-  matchup: { color: colors.muted },
-  pick: { color: colors.text, fontSize: 24, fontWeight: '800' },
-  meta: { color: colors.muted },
+  backdrop: { flex: 1, backgroundColor: 'rgba(5,3,20,0.7)' },
+  sheet: { backgroundColor: colors.card, padding: space.xl, paddingBottom: 40, borderTopLeftRadius: 24, borderTopRightRadius: 24, gap: space.md, borderTopWidth: 2, borderColor: colors.neon },
+  matchup: { color: colors.muted, fontWeight: '700' },
+  contest: { color: colors.pink, fontWeight: '900', fontSize: 12, letterSpacing: 1 },
+  pick: { color: colors.text, fontSize: 26, fontWeight: '900' },
+  meta: { color: colors.neon, fontWeight: '700' },
   stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xl, marginTop: space.md },
-  step: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center' },
-  stepText: { color: colors.text, fontSize: 24, fontWeight: '700' },
-  points: { color: colors.text, fontSize: 28, fontWeight: '800', minWidth: 120, textAlign: 'center' },
+  step: { width: 52 },
+  stepText: { color: '#022A30', fontSize: 24, fontWeight: '900' },
+  points: { color: colors.accent, fontSize: 32, fontWeight: '900', minWidth: 130, textAlign: 'center' },
   chips: { flexDirection: 'row', justifyContent: 'center', gap: space.sm, flexWrap: 'wrap' },
-  chip: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border },
+  chip: { paddingVertical: 7, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.cardAlt },
   chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipText: { color: colors.text },
-  chipTextOn: { color: colors.accentText, fontWeight: '700' },
-  ret: { color: colors.text, textAlign: 'center' },
-  msg: { color: colors.accent, textAlign: 'center' },
-  btn: { backgroundColor: colors.accent, borderRadius: 12, padding: space.md, alignItems: 'center' },
-  btnText: { color: colors.accentText, fontWeight: '800', fontSize: 17 },
-  confirmBox: { backgroundColor: colors.cardAlt, borderRadius: 12, padding: space.lg, gap: space.sm, alignItems: 'center' },
-  confirmTitle: { color: colors.accent, fontWeight: '800', letterSpacing: 1 },
-  confirmLine: { color: colors.text, fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  chipText: { color: colors.text, fontWeight: '800' },
+  chipTextOn: { color: colors.accentText, fontWeight: '900' },
+  ret: { color: colors.text, textAlign: 'center', fontWeight: '600' },
+  msg: { color: colors.accent, textAlign: 'center', fontWeight: '700' },
+  confirmBox: { backgroundColor: colors.cardAlt, borderRadius: 16, padding: space.lg, gap: space.sm, alignItems: 'center', borderWidth: 2, borderColor: colors.win },
+  confirmTitle: { color: colors.win, fontWeight: '900', letterSpacing: 2 },
+  confirmLine: { color: colors.text, fontSize: 19, fontWeight: '900', textAlign: 'center' },
   cancel: { alignItems: 'center', padding: space.sm },
-  cancelText: { color: colors.muted },
+  cancelText: { color: colors.muted, fontWeight: '700' },
 });

@@ -8,7 +8,8 @@ interface Session {
   ready: boolean;
   token: string | null;
   me: Me | null;
-  signUp(displayName: string): Promise<void>;
+  /** Store the session token the server issued after sign-in. */
+  signedIn(token: string): Promise<void>;
   refresh(): Promise<void>;
   signOut(): Promise<void>;
 }
@@ -49,11 +50,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     ready,
     token,
     me,
-    async signUp(displayName) {
-      const res = await api.signUp(displayName);
-      await SecureStore.setItemAsync(TOKEN_KEY, res.token);
-      setToken(res.token);
-      await load(res.token);
+    async signedIn(t) {
+      await SecureStore.setItemAsync(TOKEN_KEY, t);
+      setToken(t);
+      await load(t);
     },
     refresh: () => load(token),
     async signOut() {

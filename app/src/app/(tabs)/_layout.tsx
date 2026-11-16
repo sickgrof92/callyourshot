@@ -1,12 +1,29 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Redirect, Tabs } from 'expo-router';
-import { ActivityIndicator, Text, View, type ColorValue } from 'react-native';
+import { Redirect, router, Tabs } from 'expo-router';
+import { ActivityIndicator, Pressable, StyleSheet, View, type ColorValue } from 'react-native';
+import { PointsCounter } from '../../components/PointsCounter';
+import { useContests } from '../../lib/contests';
 import { useSession } from '../../lib/session';
-import { colors } from '../../lib/theme';
+import { colors, glow } from '../../lib/theme';
 
 function Balance() {
-  const { me } = useSession();
-  return <Text style={{ color: colors.accent, fontWeight: '800', marginRight: 16 }}>{me?.balance ?? 0} pts</Text>;
+  const { active } = useContests();
+  if (!active) return null;
+  return (
+    <View style={styles.pill}>
+      <Ionicons name="flash" size={14} color={colors.accent} />
+      <PointsCounter value={active.mine?.balance ?? 0} suffix=" pts" style={[styles.pillText, glow(colors.accent, 6)]} />
+    </View>
+  );
+}
+
+/** One tap to the notification switches, from every tab. */
+function Bell() {
+  return (
+    <Pressable onPress={() => router.push('/notifications')} hitSlop={12} style={{ marginLeft: 16 }} accessibilityLabel="Notification settings">
+      <Ionicons name="notifications" size={22} color={colors.neon} />
+    </Pressable>
+  );
 }
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -29,18 +46,38 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerStyle: { backgroundColor: colors.bg },
+        headerTitleStyle: { fontWeight: '900', letterSpacing: 1 },
         headerTintColor: colors.text,
+        headerShadowVisible: false,
         headerRight: () => <Balance />,
-        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
+        headerLeft: () => <Bell />,
+        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border, borderTopWidth: 2, height: 64, paddingTop: 6 },
+        tabBarLabelStyle: { fontWeight: '800', fontSize: 11 },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.muted,
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Games', tabBarIcon: icon('american-football') }} />
-      <Tabs.Screen name="earn" options={{ title: 'Points', tabBarIcon: icon('play-circle') }} />
-      <Tabs.Screen name="leaderboard" options={{ title: 'Leaders', tabBarIcon: icon('trophy') }} />
+      <Tabs.Screen name="earn" options={{ title: 'Points', tabBarIcon: icon('flash') }} />
+      <Tabs.Screen name="contests" options={{ title: 'Contests', headerTitle: '', tabBarIcon: icon('trophy') }} />
       <Tabs.Screen name="mypicks" options={{ title: 'My Picks', tabBarIcon: icon('list') }} />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginRight: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(255,225,77,0.1)',
+  },
+  pillText: { color: colors.accent, fontWeight: '900' },
+});

@@ -26,20 +26,26 @@ export interface Game {
 export interface Me {
   id: string;
   displayName: string;
-  balance: number;
   minPickPoints: number;
-  /** Out of points with nothing in play, and videos for points left today. */
-  canEarnPoints: boolean;
-  picksInPlay: number;
-  pointsAdsToday: number;
+  maxPickPoints: number;
   pointsAdsPerDay: number;
   adRewardPoints: number;
-  weeklyScore: number;
-  monthlyScore: number;
+}
+
+/** A player's own state inside one contest. */
+export interface MyEntry {
+  balance: number;
+  picksInPlay: number;
+  /** Out of points with nothing in play, and refills left today. */
+  canEarnPoints: boolean;
+  pointsAdsToday: number;
+  pointsAdsPerDay: number;
 }
 
 export interface Pick {
   id: string;
+  competition_id: string;
+  competition_name: string;
   event_id: string;
   market: Market;
   selection: Selection;
@@ -57,12 +63,66 @@ export interface Pick {
   away_score: number | null;
 }
 
-export interface Leaderboard {
-  period: { key: string; type: 'weekly' | 'monthly'; startsAt: string; endsAt: string };
-  prize: { title: string; description: string; announcedAt: string } | null;
-  standings: { rank: number; displayName: string; score: number }[];
-  me: { score: number; rank: number | null } | null;
+export type ContestKind = 'daily' | 'weekly' | 'monthly';
+
+export interface Contest {
+  id: string;
+  name: string;
+  kind: ContestKind;
+  prize: string;
+  prizeDetails: string;
+  maxEntries: number;
+  entries: number;
+  startsAt: string;
+  endsAt: string;
+  status: 'upcoming' | 'live' | 'ended';
+  joined: boolean;
+  winner: string | null;
+  /** My prize claim if I won: pending, submitted, verified, paid, ineligible, rejected. */
+  claim: string | null;
+  mine: MyEntry | null;
 }
+
+export interface PlayerStats {
+  displayName: string;
+  joinedAt: string;
+  wins: number;
+  losses: number;
+  ties: number;
+  winPct: number | null;
+  longestWinStreak: number;
+  currentWinStreak: number;
+  reloads: number;
+  contestsJoined: number;
+  contestsWon: number;
+}
+
+export interface ClaimInfo {
+  status: string;
+  note: string;
+  prize: string;
+  country: 'US' | 'CA';
+  region: string;
+  needsTaxId: boolean;
+  skillQuestion: string | null;
+}
+
+export interface ClaimForm {
+  legalName: string;
+  address: { line1: string; line2?: string; city: string; region: string; postalCode: string; country: 'US' | 'CA' };
+  birthDate: string;
+  taxId?: string;
+  skillAnswer?: number;
+}
+
+export interface ContestDetail {
+  competition: Contest;
+  standings: { rank: number; displayName: string; score: number }[];
+  me: { rank: number; score: number } | null;
+}
+
+export type NotifyKind = 'contestStart' | 'gameStart' | 'results' | 'newContests';
+export type NotifyPrefs = Record<NotifyKind, boolean> & { pushEnabled: boolean };
 
 export type AdPurpose = 'points' | 'pick' | 'forfeit';
 
@@ -97,14 +157,19 @@ async function request<T>(path: string, opts: { method?: string; body?: unknown;
 }
 
 export const api = {
-  signUp: (displayName: string) =>
-    request<{ token: string; user: { id: string; displayName: string } }>('/auth/guest', { method: 'POST', body: { displayName } }),
+  authConfig: () => request<{ mode: 'stub' | 'live' }>('/auth/config'),
+  signIn: (body: { provider: 'apple' | 'google'; idToken: string; profile?: { displayName: string; email: string; phone: string; country: 'US' | 'CA'; region: string; acceptedTerms: true } }) =>
+    request<{ token: string; user: { id: string; displayName: string } } | { needsProfile: true; email: string | null }>('/auth/signin', {
+      method: 'POST',
+      body,
+    }),
   me: (token: string) => request<Me>('/me', { token }),
   sports: () => request<{ key: string; label: string }[]>('/sports'),
   lines: (sport: string) => request<{ sport: string; events: Game[] }>(`/lines?sport=${encodeURIComponent(sport)}`),
   makePick: (
     token: string,
     body: {
+      competitionId: string;
       eventId: string;
       market: Market;
       selection: Selection;
@@ -114,18 +179,30 @@ export const api = {
       adSessionId: string;
     },
   ) => request<{ pickId: string; balance: number }>('/picks', { method: 'POST', body, token }),
-  myPicks: (token: string) => request<{ picks: Pick[] }>('/picks', { token }),
+  myPicks: (token: string, competitionId?: string) =>
+    request<{ picks: Pick[] }>(`/picks${competitionId ? `?competitionId=${encodeURIComponent(competitionId)}` : ''}`, { token }),
   forfeitPick: (token: string, pickId: string, adSessionId: string) =>
     request<{ balance: number }>(`/picks/${pickId}/forfeit`, { method: 'POST', body: { adSessionId }, token }),
-  startAd: (token: string, purpose: AdPurpose) =>
+  startAd: (token: string, purpose: AdPurpose, competitionId?: string) =>
     request<{ sessionId: string; rewardPoints: number; provider: 'stub' | 'admob' }>('/ads/sessions', {
       method: 'POST',
-      body: { purpose },
+      body: { purpose, competitionId },
       token,
     }),
   adStatus: (token: string, id: string) => request<{ rewarded: boolean; balance: number }>(`/ads/sessions/${id}`, { token }),
   completeStubAd: (token: string, id: string) =>
     request<{ rewarded: boolean; balance: number }>(`/ads/sessions/${id}/stub-complete`, { method: 'POST', token }),
-  leaderboard: (period: 'weekly' | 'monthly', token: string | null) =>
-    request<Leaderboard>(`/leaderboard?period=${period}`, { token }),
+  contests: (token: string | null) => request<{ competitions: Contest[] }>('/competitions', { token }),
+  contest: (id: string, token: string | null) => request<ContestDetail>(`/competitions/${encodeURIComponent(id)}`, { token }),
+  notifyPrefs: (token: string) => request<NotifyPrefs>('/me/notifications', { token }),
+  setNotifyPrefs: (token: string, prefs: Partial<Record<NotifyKind, boolean>>) =>
+    request<NotifyPrefs>('/me/notifications', { method: 'PUT', body: prefs, token }),
+  setPushToken: (token: string, pushToken: string | null) =>
+    request<NotifyPrefs>('/me/push-token', { method: 'POST', body: { token: pushToken }, token }),
+  player: (name: string) => request<PlayerStats>(`/players/${encodeURIComponent(name)}`),
+  claimInfo: (token: string, id: string) => request<ClaimInfo>(`/competitions/${encodeURIComponent(id)}/claim`, { token }),
+  submitClaim: (token: string, id: string, body: ClaimForm) =>
+    request<{ status: string }>(`/competitions/${encodeURIComponent(id)}/claim`, { method: 'POST', body, token }),
+  joinContest: (token: string, id: string) =>
+    request<{ joined: true }>(`/competitions/${encodeURIComponent(id)}/join`, { method: 'POST', token }),
 };

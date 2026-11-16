@@ -1,10 +1,12 @@
 # Call Your Shot
 
-A free sports pick'em app. Players watch a rewarded video for points, watch one short ad to confirm each pick on a real game, and climb weekly and monthly leaderboards. The top player in each period wins a fixed prize that is announced before the period starts.
+A free sports pick'em app. Everything happens inside a contest: players join free daily, weekly and monthly contests, start each one at 0 points, watch a rewarded video for points, watch one short ad to confirm each pick on a real game, and climb that contest's board. The top player wins the contest's prize, which is set before the contest starts.
+
+Open to residents of the US and Canada, excluding Quebec. Going live? See [LAUNCH.md](LAUNCH.md).
 
 ```
 app/      Expo (React Native) app for iPhone and Android
-server/   Node API: cached lines, picks, points, leaderboards, Odds API scheduler
+server/   Node API: cached lines, contests, picks, points, claims, push, admin page, Odds API scheduler
 ```
 
 ## Ground rules (what keeps this a free contest)
@@ -13,8 +15,8 @@ These are enforced in code, not just policy:
 
 - **Nobody can pay for points or buy an edge.** There is no in-app purchase, and the points ledger only accepts `ad_reward` and pick entries; the database rejects any other kind (`server/src/db.ts`).
 - **Points can't be cashed out or transferred.** No such endpoint exists, and a test fails if a route with a name like purchase, transfer, gift, withdraw or redeem ever appears (`server/test/api.test.ts`).
-- **Prizes are fixed and announced in advance.** A prize can only be created before its period starts and can't be edited after (`server/src/leaderboard.ts`). Prizes have no link to ad revenue.
-- **Ad rewards are a flat 10 points**, granted by the server only (after the ad network's signed callback). A player can only watch for points when they're out (below 10 points with no picks in play), at most 5 times a day, including a new player's first 10.
+- **Prizes are fixed and announced in advance.** A contest can only be created before it starts, and its prize, cap and dates lock once it starts (`server/src/competitions.ts`). Prizes have no link to ad revenue.
+- **Ad rewards are a flat 10 points**, granted by the server only, after the ad network's signed callback for that player, ad unit and session (`server/src/ads.ts`). The app is never trusted to award points. Points belong to one contest. A player can only watch for points in a contest when they're out there (below 10 points with no picks in play), at most 5 times a day per contest, including the first 10.
 - **Every pick needs its own ad.** The app plays it, then the player confirms the pick. The server refuses a pick without a fresh, unused pick ad (`server/src/ads.ts`).
 - **Forfeit:** after a game starts and before it's graded, a player can watch an ad to give up a pick as a loss (no refund). This only gets them back to 0 sooner.
 - User-facing text says "picks", "lines" and "points", and avoids "bet", "wager" and "odds".
@@ -27,7 +29,17 @@ These are enforced in code, not just policy:
 
 **Grading.** When a game with pending picks should be over, the scheduler fetches that sport's scores and settles picks: win returns points per the line's price (e.g. 40 points at -110 returns 76), push returns the stake, loss keeps it. Games with no final score after 3 days (postponed or cancelled) are refunded.
 
-**Leaderboards.** A player's score for a week (Monday to Monday, Eastern) or month is the points they gained in it: video rewards plus pick results for games that started in it. Ties go to whoever got there first.
+**Contests.** Every player starts each contest at 0 with their own 5 refills a day, and can join as many contests as they like. A pick belongs to one contest and must be on a game that starts before the contest ends. A player's score is their points in that contest, counting points in play on ungraded picks.
+
+**Tiebreakers**, in order: fewest refills used, then best win % (forfeits count as losses, pushes don't count), then most winning picks. Players still tied all win the full prize.
+
+**Winners.** After a contest ends and its picks are graded, the admin taps **Pick winner**. Each winner sees **Claim your prize** in the app and enters their legal name, mailing address and date of birth (plus a tax ID for US prizes worth $600 or more, and a math skill-testing question in Canada). The server checks the age of majority for their state or province and stores the details encrypted, apart from the profile (`server/src/claims.ts`). Only the admin page shows them.
+
+**Accounts.** Players sign in with Apple or Google and give a display name, email, phone, and state or province, and agree to the rules. Each email and phone can only be on one account (Gmail dots and +tags count as the same address). Phone verification by text isn't on yet; the `phone_verified_at` column is ready for it.
+
+**Profiles.** Tapping a name on a board shows that player's record (W-L-T, forfeits as losses and pushes as ties), win %, longest win streak, reloads and contests won. Never their email, phone or location.
+
+**Notifications** (Expo push), all on by default and each switchable from the bell on every tab or straight from the notification: a contest you joined is starting, a game you picked is starting, your pick won or lost, and a new contest you haven't joined has opened. The app asks for permission after a player's first pick, not at launch.
 
 ## Credit budget (The Odds API)
 
@@ -100,23 +112,18 @@ With the server on `AD_PROVIDER=stub` (the default), the Earn tab plays a fake 5
 
 The app passes a one-time session id as the SSV custom data; the server verifies Google's signature and grants 10 points once per session.
 
-## Running prizes (admin)
+## Running contests (admin page)
 
-All admin calls need `Authorization: Bearer $ADMIN_TOKEN`.
+Open `https://<your-server>/admin` on your phone or computer and sign in with `ADMIN_TOKEN`. From there you can:
 
-```bash
-# Announce next week's prize (must be before the week starts)
-curl -X POST $API/admin/prizes -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' \
-  -d '{"periodKey":"weekly:2026-11-23","title":"$50 gift card","description":"Top score for the week of Nov 23"}'
+- **Create one contest:** tap Daily, Weekly or Monthly to fill in the next open dates, then set the name, prize, prize value, max entries and times.
+- **Schedule a run:** "7-day contests, one starting each day" or "30-day contests, one every Monday" fills in a batch (up to 60 at once), each named after its start day.
+- **Edit or delete** a contest until it starts. Once it starts it's locked.
+- **Copy** a contest to the next day or week.
+- **Standings** with the tiebreak columns, and **Pick winner** once a contest has ended and its picks are graded.
+- **Winners:** each claim shows as Waiting on winner, Needs review, Verified, Paid, Not eligible or Rejected, with the winner's details. Tap Mark verified, then Mark paid after you send the prize.
 
-# After the period ends and its picks are graded, record the winner
-curl -X POST $API/admin/prizes/weekly:2026-11-23/finalize -H "authorization: Bearer $ADMIN_TOKEN"
-
-# Credit usage and recent Odds API calls
-curl $API/admin/budget -H "authorization: Bearer $ADMIN_TOKEN"
-```
-
-Period keys are `weekly:<Monday date>` or `monthly:<YYYY-MM>`.
+The page also shows Odds API credits left. Too many wrong passwords lock the admin page for a while.
 
 ## Deploying the server
 
@@ -126,7 +133,6 @@ Period keys are `weekly:<Monday date>` or `monthly:<YYYY-MM>`.
 
 ## Not in v1
 
-- Real accounts (sign in with Apple/Google). Players are device-based guest accounts today; you'll want verified contact details before handing out prizes.
-- Official contest rules and eligibility (age, location) reviewed by a lawyer.
+- Phone verification by text (structured for it, not turned on).
+- In-app account deletion (needed for the App Store when sign-in is live; see LAUNCH.md).
 - AppLovin MAX (AdMob is wired up; MAX would follow the same session + callback pattern).
-- Push notifications for graded picks.

@@ -33,3 +33,20 @@ export function countdown(iso: string): string {
   const h = Math.floor((ms % 86400000) / 3600000);
   return d > 0 ? `${d}d ${h}h left` : `${h}h ${Math.floor((ms % 3600000) / 60000)}m left`;
 }
+
+/** "Starts in 5h 20m" / "Ends in 2d 4h" / "Ended". */
+export function contestClock(status: 'upcoming' | 'live' | 'ended', startsAt: string, endsAt: string): string {
+  if (status === 'ended') return 'Ended';
+  const target = status === 'upcoming' ? startsAt : endsAt;
+  const ms = Date.parse(target) - Date.now();
+  const d = Math.floor(ms / 86400000);
+  const h = Math.floor((ms % 86400000) / 3600000);
+  const m = Math.max(0, Math.floor((ms % 3600000) / 60000));
+  const left = d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+  return `${status === 'upcoming' ? 'Starts in' : 'Ends in'} ${left}`;
+}
+
+export function contestDates(startsAt: string, endsAt: string): string {
+  const f = (iso: string) => new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return `${f(startsAt)} to ${f(endsAt)}`;
+}

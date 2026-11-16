@@ -2,10 +2,12 @@ import { generateKeyPairSync, createSign } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { verifyAdmobSsv } from '../src/ads.ts';
 import { buildApp } from '../src/app.ts';
+import { createCompetition } from '../src/competitions.ts';
 import { LEDGER_KINDS } from '../src/db.ts';
 import { gradeEvent } from '../src/grading.ts';
 import { applyScores, ingestOdds } from '../src/lines.ts';
 import { et, FakeOddsApi, testConfig, testDb, type FakeGame } from './helpers.ts';
+import { seedPlayer, signUpPlayer, TEST_CONTEST } from './helpers.ts';
 
 const MIN = 60_000;
 
@@ -18,7 +20,16 @@ function setup(now: number, cfgOver = {}) {
     { id: 'g1', sport: 'basketball_nba', start: et(2026, 11, 21, 19), home: 'Knicks', away: 'Celtics', homeScore: 110, awayScore: 100 },
   ];
   const api = new FakeOddsApi(games, () => clock);
+  // A week-long contest that is live for every test below.
+  const contest = createCompetition(
+    db,
+    { name: 'Weekly', kind: 'weekly', prize: '$50 gift card', prizeDetails: '', maxEntries: 100, startsAt: et(2026, 11, 21, 0), endsAt: et(2026, 11, 28, 0) },
+    et(2026, 11, 20, 0),
+  );
+  if (!contest.ok) throw new Error(contest.error);
+  const cid = contest.value.id;
   return {
+    cid,
     db,
     cfg,
     app,
@@ -31,18 +42,19 @@ function setup(now: number, cfgOver = {}) {
   };
 }
 
-async function signUp(app: ReturnType<typeof buildApp>, name: string) {
-  const res = await app.inject({ method: 'POST', url: '/auth/guest', payload: { displayName: name } });
-  expect(res.statusCode).toBe(200);
-  return res.json().token as string;
+/** Sign up and join contest `cid`. */
+async function signUp(app: ReturnType<typeof buildApp>, name: string, cid?: string) {
+  const token = await signUpPlayer(app, name);
+  if (cid) expect((await app.inject({ method: 'POST', url: `/competitions/${cid}/join`, headers: auth(token) })).statusCode).toBe(200);
+  return token;
 }
 
 type App = ReturnType<typeof buildApp>;
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 
 /** Start and complete (stub) an ad of the given purpose. Returns the HTTP results. */
-async function watchAd(app: App, token: string, purpose: 'points' | 'pick' | 'forfeit') {
-  const start = await app.inject({ method: 'POST', url: '/ads/sessions', headers: auth(token), payload: { purpose } });
+async function watchAd(app: App, token: string, purpose: 'points' | 'pick' | 'forfeit', competitionId?: string) {
+  const start = await app.inject({ method: 'POST', url: '/ads/sessions', headers: auth(token), payload: { purpose, competitionId } });
   if (start.statusCode !== 200) return { start, sessionId: null as string | null };
   const sessionId = start.json().sessionId as string;
   const done = await app.inject({ method: 'POST', url: `/ads/sessions/${sessionId}/stub-complete`, headers: auth(token) });
@@ -50,67 +62,74 @@ async function watchAd(app: App, token: string, purpose: 'points' | 'pick' | 'fo
   return { start, sessionId };
 }
 
+/** My state in a contest: balance, picks in play, refills. */
+async function mine(app: App, token: string, cid: string) {
+  return (await app.inject({ method: 'GET', url: `/competitions/${cid}`, headers: auth(token) })).json().competition.mine;
+}
+
 async function pick(app: App, token: string, payload: Record<string, unknown>) {
   return app.inject({ method: 'POST', url: '/picks', headers: auth(token), payload });
 }
 
 describe('end-to-end', () => {
-  it('points video to start, an ad before every pick, more points only when out, lock at start, grade, and rank', async () => {
+  it('starts each contest at 0, needs an ad for every pick, refills only when out, locks at start, grades and ranks', async () => {
     const t0 = et(2026, 11, 21, 12);
-    const { app, db, loadLines, setClock } = setup(t0);
+    const { app, db, cid, loadLines, setClock } = setup(t0);
     await loadLines();
-    const a = await signUp(app, 'alice');
-    const b = await signUp(app, 'bob');
+    const a = await signUp(app, 'alice', cid);
+    const b = await signUp(app, 'bob', cid);
 
-    // New players start at 0 and watch a video for their first 10 points.
-    expect((await app.inject({ method: 'GET', url: '/me', headers: auth(a) })).json()).toMatchObject({ balance: 0, canEarnPoints: true, pointsAdsToday: 0, pointsAdsPerDay: 5 });
-    await watchAd(app, a, 'points');
+    // Everyone starts the contest at 0 and watches a video for their first 10 points.
+    expect(await mine(app, a, cid)).toMatchObject({ balance: 0, canEarnPoints: true, pointsAdsToday: 0, pointsAdsPerDay: 5 });
+    expect((await watchAd(app, a, 'points')).start.json().error).toBe('contest_required');
+    await watchAd(app, a, 'points', cid);
     // Can't watch for more points while you still have points.
-    expect((await watchAd(app, a, 'points')).start.json().error).toBe('not_out_of_points');
-    await watchAd(app, b, 'points');
-
-    const me = (await app.inject({ method: 'GET', url: '/me', headers: auth(a) })).json();
-    expect(me).toMatchObject({ balance: 10, canEarnPoints: false, pointsAdsToday: 1 });
+    expect((await watchAd(app, a, 'points', cid)).start.json().error).toBe('not_out_of_points');
+    await watchAd(app, b, 'points', cid);
+    expect(await mine(app, a, cid)).toMatchObject({ balance: 10, canEarnPoints: false, pointsAdsToday: 1 });
 
     const lines = (await app.inject({ method: 'GET', url: '/lines?sport=basketball_nba' })).json();
     expect(lines.events[0].lines.spread.home).toEqual({ point: -3.5, price: -110, payout: 1.91 });
 
+    const p = (x: Record<string, unknown>) => ({ competitionId: cid, eventId: 'g1', ...x });
     // No ad, no pick.
-    const noAd = await pick(app, a, { eventId: 'g1', market: 'spread', selection: 'home', points: 10 });
+    const noAd = await pick(app, a, p({ market: 'spread', selection: 'home', points: 10 }));
     expect(noAd.statusCode).toBe(403);
     expect(noAd.json().error).toBe('pick_ad_required');
     // Watching a pick ad gives no points.
     const ad1 = (await watchAd(app, a, 'pick')).sessionId!;
-    expect((await app.inject({ method: 'GET', url: '/me', headers: auth(a) })).json().balance).toBe(10);
+    expect((await mine(app, a, cid)).balance).toBe(10);
 
     // A moved line doesn't use up the ad.
-    const moved = await pick(app, a, { eventId: 'g1', market: 'spread', selection: 'home', points: 10, expectedPoint: -2.5, expectedPrice: -110, adSessionId: ad1 });
+    const moved = await pick(app, a, p({ market: 'spread', selection: 'home', points: 10, expectedPoint: -2.5, expectedPrice: -110, adSessionId: ad1 }));
     expect(moved.json().error).toBe('line_moved');
-    const ok = await pick(app, a, { eventId: 'g1', market: 'spread', selection: 'home', points: 10, expectedPoint: -3.5, expectedPrice: -110, adSessionId: ad1 });
+    const ok = await pick(app, a, p({ market: 'spread', selection: 'home', points: 10, expectedPoint: -3.5, expectedPrice: -110, adSessionId: ad1 }));
     expect(ok.statusCode).toBe(200);
     expect(ok.json().balance).toBe(0);
 
     // One ad, one pick.
-    const reuse = await pick(app, a, { eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad1 });
-    expect(reuse.json().error).toBe('pick_ad_required');
+    expect((await pick(app, a, p({ market: 'moneyline', selection: 'home', points: 10, adSessionId: ad1 }))).json().error).toBe('pick_ad_required');
     // Someone else's ad doesn't work either.
     const bobsAd = (await watchAd(app, b, 'pick')).sessionId!;
-    expect((await pick(app, a, { eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: bobsAd })).json().error).toBe('pick_ad_required');
+    expect((await pick(app, a, p({ market: 'moneyline', selection: 'home', points: 10, adSessionId: bobsAd }))).json().error).toBe('pick_ad_required');
 
     // At 0 but with a pick still in play: no points video until it's graded (or forfeited).
-    expect((await app.inject({ method: 'GET', url: '/me', headers: auth(a) })).json()).toMatchObject({ balance: 0, picksInPlay: 1, canEarnPoints: false });
-    expect((await watchAd(app, a, 'points')).start.json().error).toBe('points_in_play');
+    expect(await mine(app, a, cid)).toMatchObject({ balance: 0, picksInPlay: 1, canEarnPoints: false });
+    expect((await watchAd(app, a, 'points', cid)).start.json().error).toBe('points_in_play');
 
     // Locks exactly at the scheduled start, without any API call.
     setClock(et(2026, 11, 21, 19) - 1);
     // Pick ads expire after 30 minutes, so Bob watches a fresh one.
-    expect((await pick(app, b, { eventId: 'g1', market: 'total', selection: 'under', points: 10, adSessionId: bobsAd })).json().error).toBe('pick_ad_required');
+    expect((await pick(app, b, p({ market: 'total', selection: 'under', points: 10, adSessionId: bobsAd }))).json().error).toBe('pick_ad_required');
     const bobsFreshAd = (await watchAd(app, b, 'pick')).sessionId!;
-    const justBefore = await pick(app, b, { eventId: 'g1', market: 'total', selection: 'under', points: 10, adSessionId: bobsFreshAd });
-    expect(justBefore.statusCode).toBe(200);
+    expect((await pick(app, b, p({ market: 'total', selection: 'under', points: 10, adSessionId: bobsFreshAd }))).statusCode).toBe(200);
     setClock(et(2026, 11, 21, 19));
     const lateAd = (await watchAd(app, a, 'pick')).sessionId!;
-    expect((await pick(app, a, { eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: lateAd })).json().error).toBe('locked');
+    expect((await pick(app, a, p({ market: 'moneyline', selection: 'home', points: 10, adSessionId: lateAd }))).json().error).toBe('locked');
+
+    // In play, both still count their 10 points on the board.
+    let board = (await app.inject({ method: 'GET', url: `/competitions/${cid}`, headers: auth(b) })).json();
+    expect(board.standings.map((s: { score: number }) => s.score)).toEqual([10, 10]);
 
     // Final: Knicks 110-100. Alice (home -3.5) wins, Bob (under 44.5) loses.
     const end = et(2026, 11, 21, 22);
@@ -118,32 +137,81 @@ describe('end-to-end', () => {
     applyScores(db, [{ id: 'g1', sport_key: 'basketball_nba', commence_time: '', home_team: 'Knicks', away_team: 'Celtics', completed: true, scores: [{ name: 'Knicks', score: '110' }, { name: 'Celtics', score: '100' }] }], end);
     expect(gradeEvent(db, 'g1', end)).toBe(2);
 
-    const meAfter = (await app.inject({ method: 'GET', url: '/me', headers: auth(a) })).json();
-    expect(meAfter.balance).toBe(19); // 10 at -110 pays 19
-    expect(meAfter.weeklyScore).toBe(10 + 9); // points video + net win
-
-    const lb = (await app.inject({ method: 'GET', url: '/leaderboard?period=weekly', headers: auth(b) })).json();
-    expect(lb.standings.map((s: { displayName: string }) => s.displayName)).toEqual(['alice', 'bob']);
-    expect(lb.me).toEqual({ score: 0, rank: 2 }); // 10 from the video, -10 on the pick
+    expect((await mine(app, a, cid)).balance).toBe(19); // 10 at -110 pays 19
+    board = (await app.inject({ method: 'GET', url: `/competitions/${cid}`, headers: auth(b) })).json();
+    expect(board.standings.map((s: { displayName: string; score: number }) => [s.displayName, s.score])).toEqual([['alice', 19], ['bob', 0]]);
+    expect(board.me).toEqual({ score: 0, rank: 2 });
     // Bob is out with nothing in play, so he can watch for points again.
-    expect((await app.inject({ method: 'GET', url: '/me', headers: auth(b) })).json().canEarnPoints).toBe(true);
+    expect((await mine(app, b, cid)).canEarnPoints).toBe(true);
   });
 
-  it('forfeits a pick as a loss after an ad, only once the game has started, so the player can earn points again', async () => {
-    const { app, db, loadLines, setClock } = setup(et(2026, 11, 21, 12));
+  it('keeps every contest separate: its own balance, refills and picks', async () => {
+    const { app, db, cid, loadLines } = setup(et(2026, 11, 21, 12));
     await loadLines();
-    const e = await signUp(app, 'erin');
-    await watchAd(app, e, 'points');
+    const other = createCompetition(
+      db,
+      { name: 'Monthly', kind: 'monthly', prize: '$100', prizeDetails: '', maxEntries: 100, startsAt: et(2026, 11, 21, 6), endsAt: et(2026, 12, 21, 6) },
+      et(2026, 11, 21, 5),
+    );
+    if (!other.ok) throw new Error(other.error);
+    const oid = other.value.id;
+    const a = await signUp(app, 'alice', cid);
+
+    // Not joined yet: no points or picks there.
+    expect((await watchAd(app, a, 'points', oid)).start.json().error).toBe('not_joined');
+    await app.inject({ method: 'POST', url: `/competitions/${oid}/join`, headers: auth(a) });
+
+    await watchAd(app, a, 'points', cid);
+    // Being out of points elsewhere is what counts: the new contest still starts at 0.
+    expect(await mine(app, a, oid)).toMatchObject({ balance: 0, canEarnPoints: true, pointsAdsToday: 0 });
+    await watchAd(app, a, 'points', oid);
+
+    // The same game can be picked once in each contest, each with its own ad.
+    const ad1 = (await watchAd(app, a, 'pick')).sessionId!;
+    expect((await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad1 })).statusCode).toBe(200);
+    const ad2 = (await watchAd(app, a, 'pick')).sessionId!;
+    expect((await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'away', points: 10, adSessionId: ad2 })).json().error).toBe('already_picked');
+    expect((await pick(app, a, { competitionId: oid, eventId: 'g1', market: 'moneyline', selection: 'away', points: 10, adSessionId: ad2 })).statusCode).toBe(200);
+
+    expect((await mine(app, a, cid)).balance).toBe(0);
+    expect((await mine(app, a, oid)).balance).toBe(0);
+    const picks = (await app.inject({ method: 'GET', url: `/picks?competitionId=${oid}`, headers: auth(a) })).json().picks;
+    expect(picks).toHaveLength(1);
+    expect(picks[0]).toMatchObject({ selection: 'away', competition_name: 'Monthly' });
+  });
+
+  it('only allows picks while the contest is live, on games that start before it ends', async () => {
+    const { app, db, loadLines } = setup(et(2026, 11, 20, 12));
+    await loadLines();
+    const mk = (startsAt: number, endsAt: number) => {
+      const r = createCompetition(db, { name: 'X', kind: 'daily', prize: 'p', prizeDetails: '', maxEntries: 9, startsAt, endsAt }, et(2026, 11, 20, 0));
+      if (!r.ok) throw new Error(r.error);
+      return r.value.id;
+    };
+    const tomorrow = mk(et(2026, 11, 21, 0), et(2026, 11, 22, 0));
+    const endsEarly = mk(et(2026, 11, 20, 6), et(2026, 11, 21, 18)); // ends before the 7 PM game on the 21st
+    const a = await signUp(app, 'alice', tomorrow);
+    await app.inject({ method: 'POST', url: `/competitions/${endsEarly}/join`, headers: auth(a) });
+    expect((await watchAd(app, a, 'points', tomorrow)).start.json().error).toBe('contest_not_live');
+    await watchAd(app, a, 'points', endsEarly);
+    const ad = (await watchAd(app, a, 'pick')).sessionId!;
+    expect((await pick(app, a, { competitionId: tomorrow, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).json().error).toBe('contest_not_live');
+    expect((await pick(app, a, { competitionId: endsEarly, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).json().error).toBe('after_contest_end');
+  });
+
+  it('forfeits a pick as a loss after an ad, only once the game has started, so the player can refill again', async () => {
+    const { app, db, cid, loadLines, setClock } = setup(et(2026, 11, 21, 12));
+    await loadLines();
+    const e = await signUp(app, 'erin', cid);
+    await watchAd(app, e, 'points', cid);
     const ad = (await watchAd(app, e, 'pick')).sessionId!;
-    const placed = await pick(app, e, { eventId: 'g1', market: 'spread', selection: 'away', points: 10, adSessionId: ad });
+    const placed = await pick(app, e, { competitionId: cid, eventId: 'g1', market: 'spread', selection: 'away', points: 10, adSessionId: ad });
     const pickId = placed.json().pickId as string;
 
-    // Out of points but a pick is still in play: no points video yet.
-    expect((await watchAd(app, e, 'points')).start.json().error).toBe('points_in_play');
+    expect((await watchAd(app, e, 'points', cid)).start.json().error).toBe('points_in_play');
 
     const forfeit = (body: Record<string, unknown>) =>
       app.inject({ method: 'POST', url: `/picks/${pickId}/forfeit`, headers: auth(e), payload: body });
-    // Not before the game starts.
     setClock(et(2026, 11, 21, 18, 50));
     const early = (await watchAd(app, e, 'forfeit')).sessionId!;
     expect((await forfeit({ adSessionId: early })).json().error).toBe('not_started');
@@ -161,64 +229,39 @@ describe('end-to-end', () => {
     const row = db.prepare('SELECT status, payout, forfeited_at FROM picks WHERE id = ?').get(pickId) as { status: string; payout: number; forfeited_at: number };
     expect(row).toMatchObject({ status: 'lost', payout: 0 });
     expect(row.forfeited_at).not.toBeNull();
-    const me = (await app.inject({ method: 'GET', url: '/me', headers: auth(e) })).json();
-    expect(me).toMatchObject({ weeklyScore: 0, canEarnPoints: true, picksInPlay: 0 });
+    expect(await mine(app, e, cid)).toMatchObject({ balance: 0, canEarnPoints: true, picksInPlay: 0 });
 
     // Grading later doesn't touch the forfeited pick.
     applyScores(db, [{ id: 'g1', sport_key: 'basketball_nba', commence_time: '', home_team: 'Knicks', away_team: 'Celtics', completed: true, scores: [{ name: 'Knicks', score: '90' }, { name: 'Celtics', score: '100' }] }], et(2026, 11, 21, 22));
     expect(gradeEvent(db, 'g1', et(2026, 11, 21, 22))).toBe(0);
-    expect((await watchAd(app, e, 'points')).sessionId).not.toBeNull();
+    expect((await watchAd(app, e, 'points', cid)).sessionId).not.toBeNull();
   });
 
-  it('allows at most 5 points videos a day, counting the first, and only while out of points', async () => {
-    const { app, db, setClock } = setup(et(2026, 11, 21, 12));
-    const c = await signUp(app, 'carol');
-    const spendAll = () => db.prepare("UPDATE users SET balance = 0 WHERE display_name = 'carol'").run();
+  it('allows at most 5 refills a day per contest, counting the first, and only while out of points', async () => {
+    const { app, db, cid, setClock } = setup(et(2026, 11, 21, 12));
+    const c = await signUp(app, 'carol', cid);
+    const spendAll = () => db.prepare('UPDATE competition_entries SET balance = 0 WHERE competition_id = ?').run(cid);
     for (let i = 0; i < 5; i++) {
       spendAll();
-      expect((await watchAd(app, c, 'points')).sessionId).not.toBeNull();
+      expect((await watchAd(app, c, 'points', cid)).sessionId).not.toBeNull();
     }
     spendAll();
-    expect((await watchAd(app, c, 'points')).start.json().error).toBe('daily_limit');
+    expect((await watchAd(app, c, 'points', cid)).start.json().error).toBe('daily_limit');
     // A new day (after 5 AM Eastern) resets the count.
     setClock(et(2026, 11, 22, 6));
-    expect((await watchAd(app, c, 'points')).sessionId).not.toBeNull();
+    expect((await watchAd(app, c, 'points', cid)).sessionId).not.toBeNull();
   });
 
   it('does not pay twice if two points videos were started at once', async () => {
-    const { app } = setup(et(2026, 11, 21, 12));
-    const d = await signUp(app, 'dana');
-    const s1 = (await app.inject({ method: 'POST', url: '/ads/sessions', headers: auth(d), payload: { purpose: 'points' } })).json().sessionId;
-    const s2 = (await app.inject({ method: 'POST', url: '/ads/sessions', headers: auth(d), payload: { purpose: 'points' } })).json().sessionId;
+    const { app, cid } = setup(et(2026, 11, 21, 12));
+    const d = await signUp(app, 'dana', cid);
+    const start = () => app.inject({ method: 'POST', url: '/ads/sessions', headers: auth(d), payload: { purpose: 'points', competitionId: cid } });
+    const s1 = (await start()).json().sessionId;
+    const s2 = (await start()).json().sessionId;
     expect((await app.inject({ method: 'POST', url: `/ads/sessions/${s1}/stub-complete`, headers: auth(d) })).statusCode).toBe(200);
     const second = await app.inject({ method: 'POST', url: `/ads/sessions/${s2}/stub-complete`, headers: auth(d) });
     expect(second.json().error).toBe('not_out_of_points');
-    expect((await app.inject({ method: 'GET', url: '/me', headers: auth(d) })).json().balance).toBe(10);
-  });
-
-  it('only announces prizes before their period starts, and finalizes the winner after', async () => {
-    const now = et(2026, 11, 18, 12); // Wednesday
-    const { app, setClock } = setup(now);
-    const admin = { authorization: 'Bearer admin-secret' };
-    const late = await app.inject({ method: 'POST', url: '/admin/prizes', headers: admin, payload: { periodKey: 'weekly:2026-11-16', title: '$50 gift card' } });
-    expect(late.statusCode).toBe(400);
-    const ok = await app.inject({ method: 'POST', url: '/admin/prizes', headers: admin, payload: { periodKey: 'weekly:2026-11-23', title: '$50 gift card' } });
-    expect(ok.statusCode).toBe(200);
-    const noAuth = await app.inject({ method: 'POST', url: '/admin/prizes', payload: { periodKey: 'weekly:2026-11-30', title: 'x' } });
-    expect(noAuth.statusCode).toBe(403);
-
-    setClock(et(2026, 11, 24, 12));
-    const a = await signUp(app, 'carol');
-    await watchAd(app, a, 'points');
-    const lb = (await app.inject({ method: 'GET', url: '/leaderboard?period=weekly' })).json();
-    expect(lb.prize.title).toBe('$50 gift card');
-
-    const early = await app.inject({ method: 'POST', url: '/admin/prizes/weekly:2026-11-23/finalize', headers: admin });
-    expect(early.statusCode).toBe(400);
-    setClock(et(2026, 12, 1, 1));
-    const fin = await app.inject({ method: 'POST', url: '/admin/prizes/weekly:2026-11-23/finalize', headers: admin });
-    expect(fin.statusCode).toBe(200);
-    expect(fin.json().winner.display_name).toBe('carol');
+    expect((await mine(app, d, cid)).balance).toBe(10);
   });
 });
 
@@ -226,9 +269,9 @@ describe('no paid or transferable points', () => {
   it('has no ledger kind for buying, transferring or cashing out', () => {
     expect([...LEDGER_KINDS]).toEqual(['ad_reward', 'pick_stake', 'pick_won', 'pick_push', 'pick_lost', 'pick_void']);
     const db = testDb();
-    db.prepare("INSERT INTO users (id, display_name, token_hash, created_at) VALUES ('u', 'u', 'h', 0)").run();
+    seedPlayer(db, 'u', 0, 0);
     expect(() =>
-      db.prepare("INSERT INTO ledger (user_id, kind, amount, score_delta, created_at, score_at) VALUES ('u', 'purchase', 100, 100, 0, 0)").run(),
+      db.prepare(`INSERT INTO ledger (user_id, competition_id, kind, amount, created_at) VALUES ('u', '${TEST_CONTEST}', 'purchase', 100, 0)`).run(),
     ).toThrow();
   });
 
@@ -242,15 +285,15 @@ describe('no paid or transferable points', () => {
   });
 
   it('never lets a balance go negative', async () => {
-    const { app, loadLines } = setup(et(2026, 11, 21, 12));
+    const { app, cid, loadLines } = setup(et(2026, 11, 21, 12));
     await loadLines();
-    const a = await signUp(app, 'dave');
-    await watchAd(app, a, 'points');
+    const a = await signUp(app, 'dave', cid);
+    await watchAd(app, a, 'points', cid);
     const ad = (await watchAd(app, a, 'pick')).sessionId!;
-    const r = await pick(app, a, { eventId: 'g1', market: 'moneyline', selection: 'home', points: 20, adSessionId: ad });
+    const r = await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 20, adSessionId: ad });
     expect(r.statusCode).toBe(402);
     // The ad wasn't used up, so a smaller pick still works with it.
-    expect((await pick(app, a, { eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).statusCode).toBe(200);
+    expect((await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).statusCode).toBe(200);
   });
 });
 

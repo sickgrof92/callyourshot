@@ -36,6 +36,7 @@ export function gradePick(pick: GradablePick, homeScore: number, awayScore: numb
 interface PendingPick {
   id: string;
   user_id: string;
+  competition_id: string;
   market: string;
   selection: string;
   point: number | null;
@@ -45,16 +46,17 @@ interface PendingPick {
 }
 
 function settle(db: DB, p: PendingPick, status: 'won' | 'lost' | 'push' | 'void', now: number): void {
+  const base = { userId: p.user_id, competitionId: p.competition_id, ref: p.id, at: now };
   let payout = 0;
   if (status === 'won') {
     payout = winPayout(p.stake, p.price);
-    postLedger(db, { userId: p.user_id, kind: 'pick_won', amount: payout, scoreDelta: payout - p.stake, ref: p.id, at: now, scoreAt: p.commence_time });
+    postLedger(db, { ...base, kind: 'pick_won', amount: payout });
   } else if (status === 'push' || status === 'void') {
     payout = p.stake;
-    postLedger(db, { userId: p.user_id, kind: status === 'push' ? 'pick_push' : 'pick_void', amount: p.stake, scoreDelta: 0, ref: p.id, at: now, scoreAt: p.commence_time });
+    postLedger(db, { ...base, kind: status === 'push' ? 'pick_push' : 'pick_void', amount: p.stake });
   } else {
-    // The stake already left the balance when the pick was made; only the leaderboard changes.
-    postLedger(db, { userId: p.user_id, kind: 'pick_lost', amount: 0, scoreDelta: -p.stake, ref: p.id, at: now, scoreAt: p.commence_time });
+    // The stake already left the balance when the pick was made; record the result.
+    postLedger(db, { ...base, kind: 'pick_lost', amount: 0 });
   }
   db.prepare("UPDATE picks SET status = ?, payout = ?, settled_at = ? WHERE id = ? AND status = 'pending'").run(
     status,
@@ -72,7 +74,7 @@ export function gradeEvent(db: DB, eventId: string, now: number): number {
       | undefined;
     if (!ev || !ev.completed || ev.home_score === null || ev.away_score === null) return 0;
     const picks = db
-      .prepare("SELECT p.id, p.user_id, p.market, p.selection, p.point, p.price, p.stake, e.commence_time FROM picks p JOIN events e ON e.id = p.event_id WHERE p.event_id = ? AND p.status = 'pending'")
+      .prepare("SELECT p.id, p.user_id, p.competition_id, p.market, p.selection, p.point, p.price, p.stake, e.commence_time FROM picks p JOIN events e ON e.id = p.event_id WHERE p.event_id = ? AND p.status = 'pending'")
       .all(eventId) as unknown as PendingPick[];
     for (const p of picks) settle(db, p, gradePick(p, ev.home_score, ev.away_score), now);
     return picks.length;
@@ -89,7 +91,7 @@ export function voidStalePicks(db: DB, now: number): number {
   return tx(db, () => {
     const picks = db
       .prepare(
-        `SELECT p.id, p.user_id, p.market, p.selection, p.point, p.price, p.stake, e.commence_time
+        `SELECT p.id, p.user_id, p.competition_id, p.market, p.selection, p.point, p.price, p.stake, e.commence_time
          FROM picks p JOIN events e ON e.id = p.event_id
          WHERE p.status = 'pending' AND e.completed = 0 AND e.commence_time < ?`,
       )

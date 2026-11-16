@@ -1,22 +1,38 @@
-// The points ledger. Points have no cash value: they can only be earned by
-// watching rewarded ads or winning picks, and only spent on picks.
+// The points ledger. Points live inside a contest: each entry starts at 0 and
+// can only grow by watching rewarded ads or winning picks in that contest.
+// Points have no cash value and are only spent on picks.
 // There is intentionally no purchase, transfer, gift or cash-out path.
 
 import type { DB, LedgerKind } from './db.ts';
 
-/** Must be called inside a transaction. Throws if the balance would go negative. */
+/**
+ * Change a player's balance in one contest. Must be called inside a
+ * transaction. Throws if the balance would go negative or they haven't joined.
+ */
 export function postLedger(
   db: DB,
-  entry: { userId: string; kind: LedgerKind; amount: number; scoreDelta: number; ref: string | null; at: number; scoreAt?: number },
+  entry: { userId: string; competitionId: string; kind: LedgerKind; amount: number; ref: string | null; at: number },
 ): number {
   const res = db
-    .prepare('UPDATE users SET balance = balance + ? WHERE id = ? AND balance + ? >= 0')
-    .run(entry.amount, entry.userId, entry.amount);
+    .prepare('UPDATE competition_entries SET balance = balance + ? WHERE competition_id = ? AND user_id = ? AND balance + ? >= 0')
+    .run(entry.amount, entry.competitionId, entry.userId, entry.amount);
   if (res.changes !== 1) throw new InsufficientPointsError();
-  db.prepare('INSERT INTO ledger (user_id, kind, amount, score_delta, ref, created_at, score_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-  ).run(entry.userId, entry.kind, entry.amount, entry.scoreDelta, entry.ref, entry.at, entry.scoreAt ?? entry.at);
-  const row = db.prepare('SELECT balance FROM users WHERE id = ?').get(entry.userId) as { balance: number };
-  return row.balance;
+  db.prepare('INSERT INTO ledger (user_id, competition_id, kind, amount, ref, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+    entry.userId,
+    entry.competitionId,
+    entry.kind,
+    entry.amount,
+    entry.ref,
+    entry.at,
+  );
+  return entryBalance(db, entry.competitionId, entry.userId);
+}
+
+export function entryBalance(db: DB, competitionId: string, userId: string): number {
+  const row = db.prepare('SELECT balance FROM competition_entries WHERE competition_id = ? AND user_id = ?').get(competitionId, userId) as
+    | { balance: number }
+    | undefined;
+  return row?.balance ?? 0;
 }
 
 export class InsufficientPointsError extends Error {

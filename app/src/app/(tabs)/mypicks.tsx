@@ -1,14 +1,20 @@
 import { useFocusEffect } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Celebration, type CelebrationInfo } from '../../components/Celebration';
+import { ContestSwitcher } from '../../components/ContestSwitcher';
+import { GameButton } from '../../components/GameButton';
 import { api, ApiError, type Pick } from '../../lib/api';
 import { gameTime, lineLabel, marketName, signed } from '../../lib/format';
+import { useContests } from '../../lib/contests';
 import { useSession } from '../../lib/session';
+import { warn } from '../../lib/haptics';
 import { colors, space } from '../../lib/theme';
 import { useAd } from '../../lib/useAd';
 
 const STATUS: Record<Pick['status'], { label: string; color: string }> = {
-  pending: { label: 'Pending', color: colors.accent },
+  pending: { label: 'In play', color: colors.neon },
   won: { label: 'Won', color: colors.win },
   lost: { label: 'Lost', color: colors.loss },
   push: { label: 'Push', color: colors.push },
@@ -26,24 +32,47 @@ function result(p: Pick): string {
   return `${p.points} pts in play`;
 }
 
+// Wins the player has already celebrated, so each win gets its moment once.
+const SEEN_KEY = 'cys.seenWins';
+
+async function newWins(picks: Pick[]): Promise<Pick[]> {
+  const wins = picks.filter((p) => p.status === 'won' && !p.forfeited_at);
+  const raw = await SecureStore.getItemAsync(SEEN_KEY).catch(() => null);
+  const seen = new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
+  const fresh = raw === null ? [] : wins.filter((p) => !seen.has(p.id)); // first run: just remember
+  const keep = wins.slice(0, 40).map((p) => p.id);
+  await SecureStore.setItemAsync(SEEN_KEY, JSON.stringify(keep)).catch(() => {});
+  return fresh;
+}
+
 export default function MyPicks() {
-  const { token, refresh } = useSession();
+  const { token } = useSession();
+  const { active, refresh } = useContests();
   const [picks, setPicks] = useState<Pick[]>([]);
   const [loading, setLoading] = useState(false);
   const [forfeiting, setForfeiting] = useState<Pick | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const { watch, adModal } = useAd();
+  const [party, setParty] = useState<CelebrationInfo | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      setPicks((await api.myPicks(token)).picks);
+      // Wins are celebrated across every contest; the list shows the one being played.
+      const everything = (await api.myPicks(token)).picks;
+      const list = active ? everything.filter((p) => p.competition_id === active.id) : everything;
+      setPicks(list);
+      const fresh = await newWins(everything);
+      if (fresh.length > 0) {
+        const gained = fresh.reduce((n, p) => n + (p.payout ?? 0) - p.points, 0);
+        setParty({ title: fresh.length === 1 ? 'YOU WON!' : `${fresh.length} WINS!`, subtitle: `+${gained} pts`, color: colors.win });
+      }
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, active?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -77,6 +106,8 @@ export default function MyPicks() {
   const started = (p: Pick) => Date.now() >= p.commence_time;
 
   return (
+    <View style={{ flex: 1 }}>
+    <ContestSwitcher />
     <FlatList
       data={picks}
       keyExtractor={(p) => p.id}
@@ -85,7 +116,7 @@ export default function MyPicks() {
       renderItem={({ item: p }) => {
         const s = statusOf(p);
         return (
-          <View style={styles.card}>
+          <View style={[styles.card, { borderLeftColor: s.color }]}>
             <View style={styles.top}>
               <Text style={styles.pick}>{lineLabel(p.market, p.selection, p.point, p.home_team, p.away_team)}</Text>
               <Text style={[styles.status, { color: s.color, borderColor: s.color }]}>{s.label}</Text>
@@ -100,14 +131,24 @@ export default function MyPicks() {
               <Text style={[styles.result, { color: s.color }]}>{result(p)}</Text>
             </View>
             {p.status === 'pending' && started(p) && (
-              <Pressable style={styles.forfeitBtn} onPress={() => { setMessage(null); setForfeiting(p); }}>
-                <Text style={styles.forfeitText}>FORFEIT THIS PICK</Text>
-              </Pressable>
+              <GameButton
+                title="FORFEIT THIS PICK"
+                variant="danger"
+                size="lg"
+                icon="flag"
+                heavy
+                style={{ marginTop: space.sm }}
+                onPress={() => {
+                  warn();
+                  setMessage(null);
+                  setForfeiting(p);
+                }}
+              />
             )}
           </View>
         );
       }}
-      ListEmptyComponent={<Text style={styles.empty}>No picks yet. Head to Games to make your first one.</Text>}
+      ListEmptyComponent={active ? <Text style={styles.empty}>No picks in this contest yet. Head to Games to make your first one.</Text> : undefined}
       ListFooterComponent={
         <>
           <Modal visible={forfeiting !== null} transparent animationType="fade" onRequestClose={() => setForfeiting(null)}>
@@ -123,9 +164,7 @@ export default function MyPicks() {
                   </Text>
                   <Text style={styles.warnBody}>You'll watch one ad to forfeit.</Text>
                   {message && <Text style={styles.warnMsg}>{message}</Text>}
-                  <Pressable style={styles.forfeitBtn} disabled={busy} onPress={forfeit}>
-                    {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.forfeitText}>WATCH AD AND FORFEIT</Text>}
-                  </Pressable>
+                  <GameButton title="WATCH AD AND FORFEIT" variant="danger" size="lg" heavy busy={busy} onPress={forfeit} />
                   <Pressable style={styles.keep} disabled={busy} onPress={() => setForfeiting(null)}>
                     <Text style={styles.keepText}>Keep my pick</Text>
                   </Pressable>
@@ -137,21 +176,21 @@ export default function MyPicks() {
         </>
       }
     />
+      <Celebration info={party} onDone={() => setParty(null)} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.card, borderRadius: 14, padding: space.lg, gap: space.xs },
+  card: { backgroundColor: colors.card, borderRadius: 16, padding: space.lg, gap: space.xs, borderLeftWidth: 5, borderWidth: 1, borderColor: colors.border },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  pick: { color: colors.text, fontWeight: '800', fontSize: 16, flex: 1 },
-  status: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, fontSize: 12, fontWeight: '700', overflow: 'hidden' },
+  pick: { color: colors.text, fontWeight: '900', fontSize: 17, flex: 1 },
+  status: { borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, fontSize: 12, fontWeight: '900', overflow: 'hidden', textTransform: 'uppercase' },
   meta: { color: colors.muted, fontSize: 13 },
-  result: { fontWeight: '800' },
+  result: { fontWeight: '900', fontSize: 16 },
   empty: { color: colors.muted, textAlign: 'center', marginTop: 60 },
-  forfeitBtn: { backgroundColor: colors.loss, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: space.sm },
-  forfeitText: { color: '#fff', fontWeight: '900', fontSize: 17, letterSpacing: 1 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: space.xl },
-  dialog: { backgroundColor: colors.card, borderRadius: 18, padding: space.xl, gap: space.md, borderWidth: 2, borderColor: colors.loss },
+  backdrop: { flex: 1, backgroundColor: 'rgba(5,3,20,0.8)', justifyContent: 'center', padding: space.xl },
+  dialog: { backgroundColor: colors.card, borderRadius: 18, padding: space.xl, gap: space.md, borderWidth: 3, borderColor: colors.loss },
   warnTitle: { color: colors.loss, fontSize: 22, fontWeight: '900', textAlign: 'center' },
   warnPick: { color: colors.text, fontSize: 18, fontWeight: '800', textAlign: 'center' },
   warnBody: { color: colors.muted, fontSize: 15, lineHeight: 21, textAlign: 'center' },

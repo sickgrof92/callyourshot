@@ -4,12 +4,11 @@
 //   ODDS_API_MONTHLY_CREDITS=20000 npm run simulate
 import { getBudgetStatus } from '../src/budget.ts';
 import { loadConfig } from '../src/config.ts';
-import { tx } from '../src/db.ts';
+
 import { placePick } from '../src/picks.ts';
-import { postLedger } from '../src/points.ts';
 import { tick } from '../src/scheduler.ts';
 import { sportsDay } from '../src/time.ts';
-import { et, FakeOddsApi, pickAd, testConfig, testDb, type FakeGame } from '../test/helpers.ts';
+import { et, FakeOddsApi, pickAd, seedPlayer, TEST_CONTEST, testConfig, testDb, type FakeGame } from '../test/helpers.ts';
 
 const cfg = testConfig({ monthlyCredits: loadConfig().monthlyCredits });
 const db = testDb();
@@ -30,15 +29,14 @@ for (let d = 1; d <= 30; d++) {
 const start = Date.UTC(2026, 10, 1, 0, 1);
 const end = Date.UTC(2026, 10, 30, 23, 55);
 const api = new FakeOddsApi(games, () => start, cfg.monthlyCredits);
-db.prepare("INSERT INTO users (id, display_name, token_hash, created_at) VALUES ('u', 'u', 'h', 0)").run();
-tx(db, () => postLedger(db, { userId: 'u', kind: 'ad_reward', amount: 1_000_000, scoreDelta: 0, ref: null, at: start }));
+seedPlayer(db, 'u', 1_000_000, start);
 const perDay = new Map<string, number>();
 for (let t = start; t <= end; t += 5 * 60_000) {
   api.clock = () => t;
   const sd = sportsDay(t, cfg.timeZone, cfg.dayStartHour);
   if (t - sd.start >= 10 * 3600_000 && t - sd.start < 10 * 3600_000 + 5 * 60_000) {
     for (const g of games.filter((x) => x.start > t && x.start < sd.end)) {
-      placePick(db, cfg, 'u', { eventId: g.id, market: 'moneyline', selection: 'home', points: 10, adSessionId: pickAd(db, cfg, 'u', t) }, t);
+      placePick(db, cfg, 'u', { competitionId: TEST_CONTEST, eventId: g.id, market: 'moneyline', selection: 'home', points: 10, adSessionId: pickAd(db, cfg, 'u', t) }, t);
     }
   }
   const before = api.used;

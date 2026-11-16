@@ -1,9 +1,17 @@
+import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Celebration, type CelebrationInfo } from '../../components/Celebration';
+import { ContestSwitcher } from '../../components/ContestSwitcher';
+import { GameButton } from '../../components/GameButton';
 import { PickSheet, type PickTarget } from '../../components/PickSheet';
+import { PushOffer } from '../../components/PushOffer';
+import { shouldOfferPush } from '../../lib/notifications';
 import { api, API_URL, type Game, type Market, type Selection } from '../../lib/api';
 import { ago, gameTime, signed } from '../../lib/format';
-import { colors, space } from '../../lib/theme';
+import { useContests } from '../../lib/contests';
+import { tap } from '../../lib/haptics';
+import { colors, glow, space } from '../../lib/theme';
 
 const ROWS: { market: Market; label: string; sides: [Selection, Selection] }[] = [
   { market: 'spread', label: 'Spread', sides: ['away', 'home'] },
@@ -21,11 +29,11 @@ function GameCard({ game, onPick }: { game: Game; onPick: (t: PickTarget) => voi
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
-        <Text style={styles.time}>{game.locked ? 'Started · picks locked' : gameTime(game.startsAt)}</Text>
+        <Text style={[styles.time, game.locked && { color: colors.loss }]}>{game.locked ? 'STARTED · PICKS LOCKED' : gameTime(game.startsAt)}</Text>
       </View>
       <View style={styles.teams}>
         <Text style={styles.team}>{game.awayTeam}</Text>
-        <Text style={styles.at}>at</Text>
+        <Text style={[styles.at, glow(colors.pink, 8)]}>VS</Text>
         <Text style={styles.team}>{game.homeTeam}</Text>
       </View>
       <View style={styles.row}>
@@ -42,14 +50,17 @@ function GameCard({ game, onPick }: { game: Game; onPick: (t: PickTarget) => voi
             {sides.map((sel) => {
               const q = m[sel];
               return (
-                <Pressable
+                <GameButton
                   key={sel}
+                  variant="ghost"
+                  size="sm"
                   disabled={!q || game.locked}
-                  style={[styles.cell, (!q || game.locked) && styles.cellOff]}
+                  style={{ flex: 1 }}
+                  faceStyle={styles.cellFace}
                   onPress={() => q && onPick({ game, market, selection: sel, quote: q })}
                 >
                   <Text style={styles.cellText}>{q ? cellText(market, sel, q.point, q.price) : '-'}</Text>
-                </Pressable>
+                </GameButton>
               );
             })}
           </View>
@@ -68,7 +79,9 @@ export default function Games() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [target, setTarget] = useState<PickTarget | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [party, setParty] = useState<CelebrationInfo | null>(null);
+  const { active } = useContests();
+  const [offerPush, setOfferPush] = useState(false);
 
   useEffect(() => {
     api
@@ -105,20 +118,20 @@ export default function Games() {
 
   return (
     <View style={{ flex: 1 }}>
+      <ContestSwitcher />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsInner}>
         {sports.map((s) => (
-          <Pressable key={s.key} onPress={() => setSport(s.key)} style={[styles.sport, sport === s.key && styles.sportOn]}>
+          <Pressable key={s.key} onPress={() => { tap(); setSport(s.key); }} style={[styles.sport, sport === s.key && styles.sportOn]}>
             <Text style={[styles.sportText, sport === s.key && styles.sportTextOn]}>{s.label}</Text>
           </Pressable>
         ))}
       </ScrollView>
-      {toast && <Text style={styles.toast}>{toast}</Text>}
       <FlatList
         data={games}
         keyExtractor={(g) => g.id}
         contentContainerStyle={{ padding: space.lg, gap: space.md }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
-        renderItem={({ item }) => <GameCard game={item} onPick={setTarget} />}
+        renderItem={({ item }) => <GameCard game={item} onPick={(t) => (active ? setTarget(t) : router.push('/contests'))} />}
         ListEmptyComponent={
           <Text style={styles.empty}>{error ?? (loading ? '' : 'No upcoming games right now. Check back soon.')}</Text>
         }
@@ -126,37 +139,43 @@ export default function Games() {
       <PickSheet
         target={target}
         onClose={() => setTarget(null)}
-        onPlaced={() => {
+        onPlaced={(label, points) => {
           setTarget(null);
-          setToast('Pick locked in. Good luck!');
-          setTimeout(() => setToast(null), 2500);
+          setParty({ title: 'PICK LOCKED IN!', subtitle: `${points} pts on ${label}`, color: colors.win });
         }}
       />
+      <Celebration
+        info={party}
+        onDone={() => {
+          setParty(null);
+          // After the first pick, offer notifications (once).
+          void shouldOfferPush().then(setOfferPush);
+        }}
+      />
+      <PushOffer visible={offerPush} onDone={() => setOfferPush(false)} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  tabs: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: colors.border },
-  tabsInner: { paddingHorizontal: space.lg, paddingVertical: space.sm, gap: space.sm },
-  sport: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.card },
-  sportOn: { backgroundColor: colors.accent },
-  sportText: { color: colors.text, fontWeight: '600' },
-  sportTextOn: { color: colors.accentText },
-  card: { backgroundColor: colors.card, borderRadius: 16, padding: space.lg, gap: space.sm },
+  tabs: { flexGrow: 0, flexShrink: 0, borderBottomWidth: 2, borderBottomColor: colors.border },
+  tabsInner: { paddingHorizontal: space.lg, paddingVertical: space.md, gap: space.sm },
+  sport: { paddingVertical: 7, paddingHorizontal: 16, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.border },
+  sportOn: { backgroundColor: 'rgba(46,242,255,0.15)', borderColor: colors.neon },
+  sportText: { color: colors.muted, fontWeight: '800' },
+  sportTextOn: { color: colors.neon },
+  card: { backgroundColor: colors.card, borderRadius: 18, padding: space.lg, gap: space.sm, borderWidth: 1.5, borderColor: colors.border },
   cardHead: { flexDirection: 'row', justifyContent: 'space-between' },
-  time: { color: colors.muted, fontSize: 13 },
+  time: { color: colors.neon, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   teams: { marginBottom: space.sm },
-  team: { color: colors.text, fontSize: 17, fontWeight: '700' },
-  at: { color: colors.muted, fontSize: 12 },
+  team: { color: colors.text, fontSize: 19, fontWeight: '900' },
+  at: { color: colors.pink, fontSize: 12, fontWeight: '900', marginVertical: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  rowLabel: { color: colors.muted, width: 56, fontSize: 13 },
-  colHead: { flex: 1, color: colors.muted, fontSize: 11, textAlign: 'center' },
-  cell: { flex: 1, backgroundColor: colors.cardAlt, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
-  cellOff: { opacity: 0.4 },
-  cellText: { color: colors.text, fontWeight: '600', fontSize: 13 },
+  rowLabel: { color: colors.muted, width: 56, fontSize: 12, fontWeight: '800' },
+  colHead: { flex: 1, color: colors.muted, fontSize: 11, textAlign: 'center', fontWeight: '700' },
+  cellFace: { paddingHorizontal: 4 },
+  cellText: { color: colors.text, fontWeight: '800', fontSize: 13 },
   noLines: { color: colors.muted, fontStyle: 'italic' },
   updated: { color: colors.muted, fontSize: 11, marginTop: space.xs },
   empty: { color: colors.muted, textAlign: 'center', marginTop: 60 },
-  toast: { backgroundColor: colors.win, color: '#04140A', textAlign: 'center', padding: space.sm, fontWeight: '700' },
 });

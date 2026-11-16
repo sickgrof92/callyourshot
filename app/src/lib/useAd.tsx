@@ -8,16 +8,17 @@ import { useSession } from './session';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function useAd(): { watch: (purpose: AdPurpose) => Promise<string | null>; adModal: ReactElement } {
+export function useAd(): { watch: (purpose: AdPurpose, competitionId?: string) => Promise<string | null>; adModal: ReactElement } {
   const { token, me } = useSession();
   const [stubVisible, setStubVisible] = useState(false);
   const stubDone = useRef<((completed: boolean) => void) | null>(null);
 
   const watch = useCallback(
-    async (purpose: AdPurpose): Promise<string | null> => {
+    async (purpose: AdPurpose, competitionId?: string): Promise<string | null> => {
       if (!token || !me) return null;
       // Errors (e.g. not allowed to earn points right now) propagate to the caller.
-      const session = await api.startAd(token, purpose);
+      // Points videos refill one contest, so they name it.
+      const session = await api.startAd(token, purpose, competitionId);
       if (session.provider === 'stub') {
         const completed = await new Promise<boolean>((resolve) => {
           stubDone.current = resolve;
