@@ -1,0 +1,28 @@
+{
+  "name": "callyourshot-server",
+  "version": "1.0.0",
+  "description": "Call Your Shot API: cached lines, picks, points and leaderboards",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning --import tsx src/index.ts",
+    "dev": "node --disable-warning=ExperimentalWarning --watch --import tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc",
+    "simulate": "node --disable-warning=ExperimentalWarning --import tsx scripts/simulate-month.ts"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "fastify": "^5.12.8",
+    "zod": "^3.25.76",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  }
+}
