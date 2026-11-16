@@ -44,7 +44,8 @@ export interface Config {
   schedulerTickSeconds: number;
 
   adProvider: 'stub' | 'admob';
-  adDailyCap: number;
+  /** Ads for points allowed per day (including a new player's first), and only while out of points. */
+  pointsAdsPerDay: number;
 
   minPickPoints: number;
   maxPickPoints: number;
@@ -84,14 +85,14 @@ export function loadConfig(): Config {
     schedulerTickSeconds: num('SCHEDULER_TICK_SECONDS', 60),
 
     adProvider,
-    adDailyCap: num('AD_DAILY_CAP', 20),
+    pointsAdsPerDay: num('POINTS_ADS_PER_DAY', 5),
 
     minPickPoints: num('MIN_PICK_POINTS', 10),
     maxPickPoints: num('MAX_PICK_POINTS', 500),
   };
 }
 
-/** Points granted for one completed rewarded video. Fixed on purpose: it never depends on ad revenue. */
+/** Points granted by a points video. Fixed on purpose: it never depends on ad revenue. */
 export const AD_REWARD_POINTS = 10;
 
 export const SPORT_LABELS: Record<string, string> = {

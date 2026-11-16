@@ -1,9 +1,16 @@
-# Render's free plan puts the API to sleep after 15 minutes without traffic,
-# which would also pause the lines/grading scheduler. This pings it every
-# 10 minutes so it stays awake. Set the repository variable RENDER_URL
-# (Settings > Secrets and variables > Actions > Variables) to your Render URL,
-# e.g. https://callyourshot-api.onrender.com. Without it, this does nothing.
-name: Keep API awake
+# KEEP THE RENDER SERVER AWAKE
+#
+# Render's free plan puts the Call Your Shot server to sleep after 15 minutes
+# with no visitors. While it sleeps it can't update lines or grade picks.
+# This workflow visits the server's /health page every 10 minutes so it never
+# goes idle long enough to fall asleep.
+#
+# Setup (one time): repo Settings > Secrets and variables > Actions >
+# Variables tab > New repository variable
+#   Name:  RENDER_URL
+#   Value: your Render URL, e.g. https://callyourshot-api.onrender.com
+name: Keep Render server awake (pings every 10 min)
+run-name: Ping Render server so it doesn't sleep
 on:
   schedule:
     - cron: '*/10 * * * *'
@@ -11,12 +18,20 @@ on:
 
 jobs:
   ping:
+    name: Ping the server's /health page
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Ping /health
+      - name: Visit the server so it stays awake
         env:
           RENDER_URL: ${{ vars.RENDER_URL }}
         run: |
-          if [ -z "$RENDER_URL" ]; then echo "RENDER_URL not set; skipping."; exit 0; fi
-          curl -fsS --retry 3 --retry-delay 20 --max-time 90 "$RENDER_URL/health"
+          if [ -z "$RENDER_URL" ]; then
+            echo "::warning title=RENDER_URL not set::Add a repository variable named RENDER_URL with your Render URL (Settings > Secrets and variables > Actions > Variables). Until then this workflow does nothing."
+            exit 0
+          fi
+          URL="${RENDER_URL%/}/health"
+          echo "Pinging $URL"
+          curl -fsS --retry 3 --retry-delay 20 --max-time 90 "$URL"
+          echo
+          echo "::notice title=Server is awake::$URL answered."

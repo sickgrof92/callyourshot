@@ -22,10 +22,10 @@ export function StubAdModal({ visible, onFinish }: { visible: boolean; onFinish:
         <Text style={styles.title}>Your sponsor's video would play here</Text>
         <Text style={styles.sub}>Development mode: no ad network is connected.</Text>
         {left > 0 ? (
-          <Text style={styles.count}>Reward in {left}s</Text>
+          <Text style={styles.count}>Done in {left}s</Text>
         ) : (
           <Pressable style={styles.btn} onPress={() => onFinish(true)}>
-            <Text style={styles.btnText}>Collect points</Text>
+            <Text style={styles.btnText}>Continue</Text>
           </Pressable>
         )}
         <Pressable onPress={() => onFinish(false)} style={styles.close}>

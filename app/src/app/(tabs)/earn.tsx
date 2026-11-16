@@ -1,18 +1,15 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { StubAdModal } from '../../components/StubAdModal';
-import { api, ApiError } from '../../lib/api';
-import { showRewardedAd } from '../../lib/rewardedAd';
+import { ApiError } from '../../lib/api';
 import { useSession } from '../../lib/session';
 import { colors, space } from '../../lib/theme';
+import { useAd } from '../../lib/useAd';
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-export default function Earn() {
-  const { token, me, refresh } = useSession();
+export default function Points() {
+  const { me, refresh } = useSession();
+  const { watch, adModal } = useAd();
   const [busy, setBusy] = useState(false);
-  const [stubSession, setStubSession] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useFocusEffect(
@@ -21,57 +18,41 @@ export default function Earn() {
     }, [refresh]),
   );
 
-  if (!me || !token) return null;
-  const capped = me.adsWatchedToday >= me.adDailyCap;
+  if (!me) return null;
+  const left = Math.max(0, me.pointsAdsPerDay - me.pointsAdsToday);
+  const outOfPoints = me.balance < me.minPickPoints;
 
-  async function watch() {
-    if (!token || !me) return;
+  async function earn() {
     setBusy(true);
     setMessage(null);
     try {
-      const session = await api.startAd(token);
-      if (session.provider === 'stub') {
-        setStubSession(session.sessionId);
-        return; // the modal finishes the flow
-      }
-      const earned = await showRewardedAd(session.sessionId, me.id);
-      if (!earned) {
-        setMessage('Watch the whole video to earn points.');
-        return;
-      }
-      // The ad network confirms the view to our server directly; wait for it.
-      for (let i = 0; i < 10; i++) {
-        const s = await api.adStatus(token, session.sessionId);
-        if (s.rewarded) {
-          setMessage(`+${session.rewardPoints} points!`);
-          break;
-        }
-        await sleep(1500);
-      }
-      await refresh();
+      const done = await watch('points');
+      setMessage(done ? `+${me?.adRewardPoints ?? 10} points!` : 'Watch the whole video to get your points.');
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'daily_cap') setMessage("You've hit today's video limit. Come back tomorrow.");
+      if (err instanceof ApiError && err.code === 'points_in_play') setMessage('You still have picks in play.');
+      else if (err instanceof ApiError && err.code === 'daily_limit') setMessage("You've used all of today's videos for points.");
+      else if (err instanceof ApiError && err.code === 'not_out_of_points') setMessage('You still have points to use.');
       else setMessage('No video is available right now. Try again in a minute.');
     } finally {
       setBusy(false);
+      await refresh();
     }
   }
 
-  async function finishStub(completed: boolean) {
-    const id = stubSession;
-    setStubSession(null);
-    setBusy(false);
-    if (!completed || !id || !token) {
-      setMessage('Watch the whole video to earn points.');
-      return;
-    }
-    try {
-      await api.completeStubAd(token, id);
-      setMessage(`+${me?.adRewardPoints ?? 10} points!`);
-    } catch {
-      setMessage('Could not add your points. Try again.');
-    }
-    await refresh();
+  let title: string;
+  let detail: string;
+  if (me.canEarnPoints) {
+    title = me.pointsAdsToday === 0 && me.balance === 0 ? 'Get your points' : "You're out of points";
+    detail = `Watch a short video to get ${me.adRewardPoints} points. ${left} of ${me.pointsAdsPerDay} left today.`;
+  } else if (!outOfPoints) {
+    title = 'Go make some picks';
+    detail = `You can watch for more points once you're out of points and have no picks in play. You get up to ${me.pointsAdsPerDay} a day.`;
+  } else if (me.picksInPlay > 0) {
+    title = `Waiting on ${me.picksInPlay} pick${me.picksInPlay === 1 ? '' : 's'}`;
+    detail = 'You can watch for more points once your picks are graded. If a pick is clearly losing, you can forfeit it in My Picks to get back sooner.';
+  } else {
+    title = "That's all for today";
+    detail = `You've used all ${me.pointsAdsPerDay} videos for points today. Come back tomorrow.`;
   }
 
   return (
@@ -80,13 +61,18 @@ export default function Earn() {
       <Text style={styles.balance}>{me.balance}</Text>
 
       <View style={styles.card}>
-        <Text style={styles.title}>Watch a video, earn {me.adRewardPoints} points</Text>
-        <Text style={styles.sub}>
-          {me.adsWatchedToday} of {me.adDailyCap} videos watched today
-        </Text>
-        <Pressable style={[styles.btn, (busy || capped) && styles.btnOff]} disabled={busy || capped} onPress={watch}>
-          {busy ? <ActivityIndicator color={colors.accentText} /> : <Text style={styles.btnText}>{capped ? 'Daily limit reached' : 'Watch video'}</Text>}
-        </Pressable>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.sub}>{detail}</Text>
+        {me.canEarnPoints && (
+          <Pressable style={[styles.btn, busy && styles.btnOff]} disabled={busy} onPress={earn}>
+            {busy ? <ActivityIndicator color={colors.accentText} /> : <Text style={styles.btnText}>Watch video for {me.adRewardPoints} points</Text>}
+          </Pressable>
+        )}
+        {!me.canEarnPoints && me.picksInPlay > 0 && outOfPoints && (
+          <Pressable style={styles.btnGhost} onPress={() => router.push('/mypicks')}>
+            <Text style={styles.btnGhostText}>Go to My Picks</Text>
+          </Pressable>
+        )}
         {message && <Text style={styles.msg}>{message}</Text>}
       </View>
 
@@ -107,7 +93,7 @@ export default function Earn() {
           How it works
         </Text>
       </Text>
-      <StubAdModal visible={stubSession !== null} onFinish={finishStub} />
+      {adModal}
     </View>
   );
 }
@@ -118,10 +104,12 @@ const styles = StyleSheet.create({
   balance: { color: colors.accent, fontSize: 56, fontWeight: '900', textAlign: 'center' },
   card: { backgroundColor: colors.card, borderRadius: 16, padding: space.xl, gap: space.md },
   title: { color: colors.text, fontSize: 18, fontWeight: '800' },
-  sub: { color: colors.muted },
+  sub: { color: colors.muted, lineHeight: 20 },
   btn: { backgroundColor: colors.accent, borderRadius: 12, padding: space.md, alignItems: 'center' },
   btnOff: { opacity: 0.5 },
   btnText: { color: colors.accentText, fontWeight: '800', fontSize: 17 },
+  btnGhost: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: space.md, alignItems: 'center' },
+  btnGhostText: { color: colors.text, fontWeight: '700' },
   msg: { color: colors.text, textAlign: 'center' },
   scores: { flexDirection: 'row', gap: space.md },
   score: { flex: 1, backgroundColor: colors.card, borderRadius: 16, padding: space.lg, alignItems: 'center' },

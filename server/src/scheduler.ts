@@ -153,10 +153,11 @@ export function decide(plans: SportPlan[], budget: BudgetStatus, now: number, cf
 // ---- Lean mode -------------------------------------------------------------
 // For small plans (e.g. the free tier's 500 credits/month, ~15/day) the normal
 // schedule would spend the whole day's allowance at 5 AM. Instead:
-//  - each day, pick which sports get a line refresh, busiest slate first, as
-//    many as fit after setting aside credits for grading;
+//  - each day, pick which sports get a line refresh, as many as fit after
+//    setting aside credits for grading. Sports take turns: the one that has
+//    gone longest without a refresh goes first, then the bigger slate;
 //  - refresh each chosen sport once, about 2 hours before its first game;
-//  - fetch scores at most once per sport every 6 hours, after its pending
+//  - fetch scores at most once per sport every 12 hours, after its pending
 //    games for the day should be over (or once a result has waited 12 hours).
 // Sports skipped today keep the lines from their last refresh (lines for
 // future games come back with every refresh of that sport).
@@ -164,12 +165,18 @@ export function decide(plans: SportPlan[], budget: BudgetStatus, now: number, cf
 /** Below this daily allowance (credits) the scheduler switches to lean mode. */
 export const LEAN_ALLOWANCE = 60;
 export const LEAN_LINES_LEAD = 2 * HOUR;
-export const LEAN_SCORES_GAP = 6 * HOUR;
+export const LEAN_SCORES_GAP = 12 * HOUR;
 export const LEAN_SCORES_MAX_WAIT = 12 * HOUR;
 
 /** Sports that get today's single line refresh in lean mode, busiest first. */
-export function leanLineSports(plans: SportPlan[], allowanceToday: number, oddsCost: number): string[] {
-  const playing = plans.filter((p) => p.startsToday.length > 0).sort((a, b) => b.startsToday.length - a.startsToday.length);
+export function leanLineSports(plans: SportPlan[], allowanceToday: number, oddsCost: number, dayStart = 0): string[] {
+  // Priority: sports already refreshed today keep their slot; then whichever
+  // sport has gone longest without a refresh (so sports take turns across days);
+  // then the bigger slate.
+  const rank = (p: SportPlan) => (p.lastOddsAt !== null && p.lastOddsAt >= dayStart ? -Infinity : (p.lastOddsAt ?? -1));
+  const playing = plans
+    .filter((p) => p.startsToday.length > 0)
+    .sort((a, b) => rank(a) - rank(b) || b.startsToday.length - a.startsToday.length);
   // Keep up to half the day's credits for grading: one scores call per sport playing today.
   const scoresReserve = Math.min(Math.floor(allowanceToday / 2), SCORES_CALL_COST * playing.length);
   const slots = Math.max(0, Math.floor((allowanceToday - scoresReserve) / oddsCost));
@@ -185,7 +192,8 @@ function decideLean(plans: SportPlan[], budget: BudgetStatus, now: number, cfg: 
 
   // Grading first: picks must always settle, even out of the reserve.
   for (const p of plans) {
-    const len = gameLength(p.sport);
+    // Extra hour of slack: a check that arrives before the final costs a whole extra call.
+    const len = gameLength(p.sport) + HOUR;
     const finished = p.pendingStarts.filter((s) => s + len <= now);
     if (finished.length === 0) continue;
     if (p.lastScoresAt !== null && now - p.lastScoresAt < LEAN_SCORES_GAP) continue;
@@ -199,7 +207,7 @@ function decideLean(plans: SportPlan[], budget: BudgetStatus, now: number, cfg: 
   if (budget.mode !== 'normal') return base;
   const day = sportsDay(now, cfg.timeZone, cfg.dayStartHour);
   let left = budget.leftToday - scores.length * SCORES_CALL_COST;
-  for (const sport of leanLineSports(plans, budget.allowanceToday, oddsCost)) {
+  for (const sport of leanLineSports(plans, budget.allowanceToday, oddsCost, day.start)) {
     const p = plans.find((x) => x.sport === sport)!;
     if (p.lastOddsAt !== null && p.lastOddsAt >= day.start) continue; // already refreshed today
     const first = p.upcomingToday[0];

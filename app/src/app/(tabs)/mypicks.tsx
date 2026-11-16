@@ -1,10 +1,11 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
-import { api, type Pick } from '../../lib/api';
+import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { api, ApiError, type Pick } from '../../lib/api';
 import { gameTime, lineLabel, marketName, signed } from '../../lib/format';
 import { useSession } from '../../lib/session';
 import { colors, space } from '../../lib/theme';
+import { useAd } from '../../lib/useAd';
 
 const STATUS: Record<Pick['status'], { label: string; color: string }> = {
   pending: { label: 'Pending', color: colors.accent },
@@ -14,6 +15,10 @@ const STATUS: Record<Pick['status'], { label: string; color: string }> = {
   void: { label: 'Refunded', color: colors.push },
 };
 
+function statusOf(p: Pick) {
+  return p.forfeited_at ? { label: 'Forfeited', color: colors.loss } : STATUS[p.status];
+}
+
 function result(p: Pick): string {
   if (p.status === 'won') return `+${(p.payout ?? 0) - p.points} pts`;
   if (p.status === 'lost') return `-${p.points} pts`;
@@ -22,9 +27,13 @@ function result(p: Pick): string {
 }
 
 export default function MyPicks() {
-  const { token } = useSession();
+  const { token, refresh } = useSession();
   const [picks, setPicks] = useState<Pick[]>([]);
   const [loading, setLoading] = useState(false);
+  const [forfeiting, setForfeiting] = useState<Pick | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const { watch, adModal } = useAd();
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -42,6 +51,31 @@ export default function MyPicks() {
     }, [load]),
   );
 
+  async function forfeit() {
+    if (!token || !forfeiting) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const adId = await watch('forfeit');
+      if (!adId) {
+        setMessage('Watch the whole ad to forfeit this pick.');
+        return;
+      }
+      await api.forfeitPick(token, forfeiting.id, adId);
+      setForfeiting(null);
+      await Promise.all([load(), refresh()]);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'not_pending') {
+        setForfeiting(null);
+        await load();
+      } else setMessage('Something went wrong. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const started = (p: Pick) => Date.now() >= p.commence_time;
+
   return (
     <FlatList
       data={picks}
@@ -49,7 +83,7 @@ export default function MyPicks() {
       contentContainerStyle={{ padding: space.lg, gap: space.sm }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
       renderItem={({ item: p }) => {
-        const s = STATUS[p.status];
+        const s = statusOf(p);
         return (
           <View style={styles.card}>
             <View style={styles.top}>
@@ -65,10 +99,43 @@ export default function MyPicks() {
               </Text>
               <Text style={[styles.result, { color: s.color }]}>{result(p)}</Text>
             </View>
+            {p.status === 'pending' && started(p) && (
+              <Pressable style={styles.forfeitBtn} onPress={() => { setMessage(null); setForfeiting(p); }}>
+                <Text style={styles.forfeitText}>FORFEIT THIS PICK</Text>
+              </Pressable>
+            )}
           </View>
         );
       }}
       ListEmptyComponent={<Text style={styles.empty}>No picks yet. Head to Games to make your first one.</Text>}
+      ListFooterComponent={
+        <>
+          <Modal visible={forfeiting !== null} transparent animationType="fade" onRequestClose={() => setForfeiting(null)}>
+            <View style={styles.backdrop}>
+              {forfeiting && (
+                <View style={styles.dialog}>
+                  <Text style={styles.warnTitle}>FORFEIT THIS PICK?</Text>
+                  <Text style={styles.warnPick}>{lineLabel(forfeiting.market, forfeiting.selection, forfeiting.point, forfeiting.home_team, forfeiting.away_team)}</Text>
+                  <Text style={styles.warnBody}>
+                    This pick will count as a <Text style={{ fontWeight: '900', color: colors.loss }}>LOSS</Text>. You lose the{' '}
+                    <Text style={{ fontWeight: '900', color: colors.text }}>{forfeiting.points} points</Text> on it, even if it would have
+                    won. This can't be undone.
+                  </Text>
+                  <Text style={styles.warnBody}>You'll watch one ad to forfeit.</Text>
+                  {message && <Text style={styles.warnMsg}>{message}</Text>}
+                  <Pressable style={styles.forfeitBtn} disabled={busy} onPress={forfeit}>
+                    {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.forfeitText}>WATCH AD AND FORFEIT</Text>}
+                  </Pressable>
+                  <Pressable style={styles.keep} disabled={busy} onPress={() => setForfeiting(null)}>
+                    <Text style={styles.keepText}>Keep my pick</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+            {adModal}
+          </Modal>
+        </>
+      }
     />
   );
 }
@@ -81,4 +148,14 @@ const styles = StyleSheet.create({
   meta: { color: colors.muted, fontSize: 13 },
   result: { fontWeight: '800' },
   empty: { color: colors.muted, textAlign: 'center', marginTop: 60 },
+  forfeitBtn: { backgroundColor: colors.loss, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: space.sm },
+  forfeitText: { color: '#fff', fontWeight: '900', fontSize: 17, letterSpacing: 1 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: space.xl },
+  dialog: { backgroundColor: colors.card, borderRadius: 18, padding: space.xl, gap: space.md, borderWidth: 2, borderColor: colors.loss },
+  warnTitle: { color: colors.loss, fontSize: 22, fontWeight: '900', textAlign: 'center' },
+  warnPick: { color: colors.text, fontSize: 18, fontWeight: '800', textAlign: 'center' },
+  warnBody: { color: colors.muted, fontSize: 15, lineHeight: 21, textAlign: 'center' },
+  warnMsg: { color: colors.accent, textAlign: 'center' },
+  keep: { alignItems: 'center', padding: space.sm },
+  keepText: { color: colors.text, fontWeight: '700', fontSize: 16 },
 });

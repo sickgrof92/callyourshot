@@ -1,13 +1,13 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { adsWatchedToday, createAdSession, fetchAdmobKeys, grantAdReward, verifyAdmobSsv } from './ads.ts';
+import { AD_PURPOSES, adEligibility, createAdSession, fetchAdmobKeys, grantAdReward, verifyAdmobSsv } from './ads.ts';
 import { getBudgetStatus } from './budget.ts';
 import { AD_REWARD_POINTS, SPORT_LABELS, type Config } from './config.ts';
 import type { DB } from './db.ts';
 import { announcePrize, currentPeriods, finalizePrize, prizeFor, standings, userScore } from './leaderboard.ts';
 import type { LineRow } from './lines.ts';
-import { listPicks, placePick } from './picks.ts';
+import { forfeitPick, listPicks, placePick } from './picks.ts';
 import { payoutMultiplier } from './points.ts';
 import { HOUR, DAY, periodWindow } from './time.ts';
 
@@ -96,12 +96,16 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl 
     const u = requireUser(req);
     const now = clock();
     const { weekly, monthly } = currentPeriods(now, cfg.timeZone);
+    const e = adEligibility(db, cfg, u.id, now);
     return {
       id: u.id,
       displayName: u.display_name,
       balance: u.balance,
-      adsWatchedToday: adsWatchedToday(db, cfg, u.id, now),
-      adDailyCap: cfg.adDailyCap,
+      minPickPoints: cfg.minPickPoints,
+      canEarnPoints: e.canEarnPoints,
+      picksInPlay: e.pendingPicks,
+      pointsAdsToday: e.pointsAdsToday,
+      pointsAdsPerDay: e.pointsAdsPerDay,
       adRewardPoints: AD_REWARD_POINTS,
       weeklyScore: userScore(db, weekly, u.id),
       monthlyScore: userScore(db, monthly, u.id),
@@ -178,12 +182,23 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl 
         points: z.number().int(),
         expectedPoint: z.number().nullable().optional(),
         expectedPrice: z.number().int().optional(),
+        adSessionId: z.string().optional(),
       })
       .parse(req.body);
     const res = placePick(db, cfg, u.id, body, clock());
     if (res.ok) return { pickId: res.pickId, balance: res.balance };
-    const status = { not_found: 404, locked: 409, no_line: 404, already_picked: 409, not_enough_points: 402, bad_amount: 400, line_moved: 409 }[res.error];
+    const status = { not_found: 404, locked: 409, no_line: 404, already_picked: 409, not_enough_points: 402, bad_amount: 400, line_moved: 409, pick_ad_required: 403 }[res.error];
     return reply.code(status).send(res);
+  });
+
+  // Give up a pending pick as a loss (needs a completed forfeit ad). Nothing is refunded.
+  app.post('/picks/:id/forfeit', async (req, reply) => {
+    const u = requireUser(req);
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const { adSessionId } = z.object({ adSessionId: z.string().optional() }).parse(req.body ?? {});
+    const res = forfeitPick(db, u.id, id, adSessionId, clock());
+    if (res.ok) return { balance: res.balance };
+    return reply.code({ not_found: 404, not_started: 409, not_pending: 409, forfeit_ad_required: 403 }[res.error]).send(res);
   });
 
   app.get('/picks', async (req) => {
@@ -195,10 +210,15 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl 
 
   app.post('/ads/sessions', async (req, reply) => {
     const u = requireUser(req);
-    const now = clock();
-    const watched = adsWatchedToday(db, cfg, u.id, now);
-    if (watched >= cfg.adDailyCap) return reply.code(429).send({ error: 'daily_cap', adDailyCap: cfg.adDailyCap });
-    return { sessionId: createAdSession(db, u.id, now), rewardPoints: AD_REWARD_POINTS, provider: cfg.adProvider };
+    const { purpose } = z.object({ purpose: z.enum(AD_PURPOSES) }).parse(req.body ?? {});
+    const res = createAdSession(db, cfg, u.id, purpose, clock());
+    if (!res.ok) return reply.code(409).send({ error: res.reason });
+    return {
+      sessionId: res.sessionId,
+      purpose,
+      rewardPoints: purpose === 'pick' ? 0 : AD_REWARD_POINTS,
+      provider: cfg.adProvider,
+    };
   });
 
   app.get('/ads/sessions/:id', async (req) => {
@@ -220,7 +240,7 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl 
     const owner = db.prepare('SELECT user_id FROM ad_sessions WHERE id = ?').get(id) as { user_id: string } | undefined;
     if (!owner || owner.user_id !== u.id) return reply.code(404).send({ error: 'Not found' });
     const res = grantAdReward(db, cfg, id, `stub:${id}`, clock());
-    return res.ok ? { rewarded: true, balance: res.balance } : reply.code(409).send({ error: res.reason });
+    return res.ok ? { rewarded: true, balance: res.balance, purpose: res.purpose } : reply.code(409).send({ error: res.reason });
   });
 
   // AdMob server-side verification callback. Configure this URL in the AdMob console.
