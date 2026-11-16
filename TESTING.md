@@ -88,7 +88,7 @@ The message shows the address the app is trying. If it says `http://localhost:80
 4. Check **My Picks** after the game ends. Picks are graded a few hours after games finish (on the free plan, scores are checked a few times a day).
 5. **Leaders** shows the weekly and monthly boards.
 
-Lines only appear after the server's first update for that sport. On the free plan each sport updates about 2 hours before its first game of the day, and only the busiest couple of sports get an update each day. If a sport shows no games, try another one or check back later.
+Lines only appear after the server's first update for that sport. On the free plan, 2 or 3 sports get fresh lines each day, about 2 hours before their first game, and the sports take turns. A sport that shows "Lines coming soon" will usually have lines later today or tomorrow. If a sport shows no games, try another one or check back later.
 
 ## Admin checks (optional)
 

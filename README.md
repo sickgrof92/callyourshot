@@ -48,16 +48,16 @@ The scheduler (`server/src/scheduler.ts`) ticks every minute and spends only whe
 
 **Small plans (lean mode).** When a day's allowance is under 60 credits (the free tier gives about 15), the scheduler switches to a lean schedule instead:
 
-- It picks which sports get a line refresh today, busiest slate first, as many as fit after setting aside credits for grading. On the free tier that is usually 2 sports a day.
+- It picks which sports get a line refresh today, as many as fit after setting aside credits for grading (usually 2 to 3 on the free tier). Sports take turns: whichever has gone longest without a refresh goes first, so every sport gets fresh lines every day or two.
 - Each chosen sport refreshes once, about 2 hours before its first game.
-- Scores are checked at most once per sport every 6 hours, after that sport's pending games should be over, so one call grades a whole night.
+- Scores are checked at most once per sport every 12 hours, after that sport's pending games should be over (with an hour of slack for overtime), so one call grades a whole night.
 - Sports skipped today keep the lines from their last refresh (every refresh also brings lines for that sport's upcoming games on later days).
 
 Simulated busy month with a player picking every game (`npm run simulate` in `server/`):
 
 | Plan | Credits/day | Line refreshes/day | Spent in 30 days | Picks graded |
 | --- | --- | --- | --- | --- |
-| Free, 500 | ~14 | 2 | 449 (51 left) | all |
+| Free, 500 | ~14 | 2–3 | 438 (62 left) | all |
 | $30, 20,000 | ~180–310 | ~60–85 | ~7,400 | all |
 
 `ODDS_API_MONTHLY_CREDITS=20000 npm run simulate` shows the paid-plan numbers.
