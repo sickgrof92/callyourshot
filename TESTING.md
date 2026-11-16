@@ -1,6 +1,6 @@
-# Try Call Your Shot on your iPhone
+# Try Call Your Shot on your phone (Android or iPhone)
 
-This takes about 20 minutes the first time. You'll put the server online for free with Render, then open the app on your phone with Expo Go.
+This takes about 20 minutes the first time. You'll put the server online for free with Render, then open the app on your phone with Expo Go. It works the same on Android and iPhone; the only differences are where you get Expo Go and how you scan the QR code.
 
 ## Part 1: Put the server online (Render)
 
@@ -37,11 +37,13 @@ Check that it works: click the repo's **Actions** tab, then **Keep Render server
 - **The database resets whenever the server restarts or redeploys** (for example, after new code is merged). Test accounts, points and picks start over. That's fine for testing. Before real players join, switch to Render's Starter plan with a disk (instructions are in `render.yaml`).
 - After a restart, the server may spend a few extra Odds API credits reloading lines.
 
-## Part 2: Run the app on your iPhone
+## Part 2: Run the app on your phone
 
 You need a computer (Mac or Windows) on the same Wi-Fi as your phone.
 
-1. On your iPhone, install **Expo Go** from the App Store.
+1. On your phone, install **Expo Go**:
+   - **Android:** from the Google Play Store.
+   - **iPhone:** from the App Store.
 2. On your computer, install **Node.js** (the LTS version) from [nodejs.org](https://nodejs.org).
 3. Download the code. Either:
    - with Git: `git clone https://github.com/sickgrof92/callyourshot.git`, or
@@ -62,7 +64,9 @@ You need a computer (Mac or Windows) on the same Wi-Fi as your phone.
    ```
    npx expo start
    ```
-8. A QR code appears in the terminal. Open your iPhone's **Camera**, point it at the QR code, and tap the banner to open it in Expo Go.
+8. A QR code appears in the terminal. Scan it:
+   - **Android:** open the **Expo Go** app and tap **Scan QR code**, then point it at the QR code. (Your regular camera app won't open it.)
+   - **iPhone:** open the **Camera** app, point it at the QR code, and tap the banner to open it in Expo Go.
 
 If your phone can't connect, stop it with Ctrl+C and run `npx expo start --tunnel` instead.
 
