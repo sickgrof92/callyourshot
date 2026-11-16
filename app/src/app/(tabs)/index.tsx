@@ -77,11 +77,17 @@ export default function Games() {
         setSports(s);
         setSport((cur) => cur ?? s[0]?.key ?? null);
       })
-      .catch(() => setError('Could not reach the server.'));
+      .catch(() => setError("Couldn't reach the server. It may be waking up, so pull down to refresh in a minute."));
   }, []);
 
   const load = useCallback(async () => {
-    if (!sport) return;
+    if (!sport) {
+      if (sports.length === 0) {
+        // Retry the sport list too (e.g. after the server woke up).
+        api.sports().then((s) => { setSports(s); setSport(s[0]?.key ?? null); setError(null); }).catch(() => {});
+      }
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -91,7 +97,7 @@ export default function Games() {
     } finally {
       setLoading(false);
     }
-  }, [sport]);
+  }, [sport, sports.length]);
 
   useEffect(() => {
     void load();

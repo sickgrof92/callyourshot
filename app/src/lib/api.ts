@@ -69,15 +69,21 @@ export class ApiError extends Error {
   }
 }
 
+// Long enough for a free-tier server to wake from sleep (can take ~50s).
+const TIMEOUT_MS = 70_000;
+
 async function request<T>(path: string, opts: { method?: string; body?: unknown; token?: string | null } = {}): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const res = await fetch(`${API_URL}${path}`, {
+    signal: controller.signal,
     method: opts.method ?? 'GET',
     headers: {
       ...(opts.body !== undefined ? { 'content-type': 'application/json' } : {}),
       ...(opts.token ? { authorization: `Bearer ${opts.token}` } : {}),
     },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  });
+  }).finally(() => clearTimeout(timer));
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) throw new ApiError(res.status, String(json.error ?? 'error'), json);
   return json as T;

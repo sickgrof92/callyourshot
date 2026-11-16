@@ -18,7 +18,8 @@ export default function Welcome() {
       await signUp(name.trim());
       router.replace('/');
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 409 ? 'That name is taken.' : 'Use 3-20 letters, numbers, dots or underscores.');
+      if (!(err instanceof ApiError)) setError("Couldn't reach the server. It may be waking up, so try again in a minute.");
+      else setError(err.status === 409 ? 'That name is taken.' : 'Use 3-20 letters, numbers, dots or underscores.');
     } finally {
       setBusy(false);
     }

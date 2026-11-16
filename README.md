@@ -82,7 +82,8 @@ App:
 ```bash
 cd app
 npm install
-EXPO_PUBLIC_API_URL=http://<your-computer-ip>:8080 npx expo start
+cp .env.example .env.local   # set EXPO_PUBLIC_API_URL to your server
+npx expo start
 ```
 
 With the server on `AD_PROVIDER=stub` (the default), the Earn tab plays a fake 5-second video so you can test in Expo Go. Real ads need a development build (`npx expo run:ios` / `run:android` or EAS Build).
@@ -117,7 +118,9 @@ Period keys are `weekly:<Monday date>` or `monthly:<YYYY-MM>`.
 
 ## Deploying the server
 
-`server/Dockerfile` runs the API with SQLite stored at `/data`; mount a persistent volume there and run a single instance, since the scheduler and database live in one process. Set the env vars from `.env.example`.
+**Render (free, for testing):** `render.yaml` is a Blueprint for the free plan. [TESTING.md](TESTING.md) walks through deploying it and running the app on a phone with Expo Go. The free plan sleeps after 15 idle minutes, so `.github/workflows/keep-awake.yml` pings `/health` every 10 minutes once the `RENDER_URL` repository variable is set. The free plan also has no disk, so data resets on each restart or deploy.
+
+**Anywhere else:** `server/Dockerfile` runs the API with SQLite stored at `/data`; mount a persistent volume there and run a single instance, since the scheduler and database live in one process. Set the env vars from `.env.example`.
 
 ## Not in v1
 

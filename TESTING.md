@@ -1,0 +1,81 @@
+# Try Call Your Shot on your iPhone
+
+This takes about 20 minutes the first time. You'll put the server online for free with Render, then open the app on your phone with Expo Go.
+
+## Part 1: Put the server online (Render)
+
+1. Go to [render.com](https://render.com) and sign up with your GitHub account.
+2. In the Render dashboard, click **New** > **Blueprint**.
+3. Pick the **callyourshot** repository. Render reads the `render.yaml` file and shows one service, `callyourshot-api`.
+4. Render asks for two secret values. Paste them in:
+   - `ODDS_API_KEY`: your key from the-odds-api.com
+   - `ADMIN_TOKEN`: your admin password (a long random string is best)
+5. Click **Apply**. The first deploy takes a few minutes.
+6. When it says **Live**, copy the URL at the top of the service page. It looks like `https://callyourshot-api.onrender.com`.
+7. Check it works: open `<your URL>/health` in a browser. You should see `{"ok":true}`.
+
+The plan size (500 credits) and renewal day (16th) are already filled in. When you upgrade to the $30 plan, open the service's **Environment** tab, change `ODDS_API_MONTHLY_CREDITS` to `20000`, and save.
+
+### Keep it awake
+
+Render's free plan puts the server to sleep after 15 minutes with no visitors. While it sleeps, it can't update lines or grade picks, and the first request after a nap takes up to a minute.
+
+The repo includes a GitHub Action that pings the server every 10 minutes to keep it awake. To turn it on:
+
+1. On GitHub, open the repo's **Settings** > **Secrets and variables** > **Actions** > **Variables** tab.
+2. Click **New repository variable**. Name it `RENDER_URL` and paste your Render URL as the value.
+3. That's it. You can confirm it under the repo's **Actions** tab ("Keep API awake").
+
+### Good to know about the free plan
+
+- **The database resets whenever the server restarts or redeploys** (for example, after new code is merged). Test accounts, points and picks start over. That's fine for testing. Before real players join, switch to Render's Starter plan with a disk (instructions are in `render.yaml`).
+- After a restart, the server may spend a few extra Odds API credits reloading lines.
+
+## Part 2: Run the app on your iPhone
+
+You need a computer (Mac or Windows) on the same Wi-Fi as your phone.
+
+1. On your iPhone, install **Expo Go** from the App Store.
+2. On your computer, install **Node.js** (the LTS version) from [nodejs.org](https://nodejs.org).
+3. Download the code. Either:
+   - with Git: `git clone https://github.com/sickgrof92/callyourshot.git`, or
+   - on GitHub, click **Code** > **Download ZIP**, and unzip it.
+4. Open a terminal (Terminal on Mac, PowerShell on Windows) and go into the app folder:
+   ```
+   cd callyourshot/app
+   ```
+5. Install the app's packages (a few minutes):
+   ```
+   npm install
+   ```
+6. Tell the app where your server is. Create a file named `.env.local` in the `app` folder containing one line, with your Render URL:
+   ```
+   EXPO_PUBLIC_API_URL=https://callyourshot-api.onrender.com
+   ```
+7. Start the app:
+   ```
+   npx expo start
+   ```
+8. A QR code appears in the terminal. Open your iPhone's **Camera**, point it at the QR code, and tap the banner to open it in Expo Go.
+
+If your phone can't connect, stop it with Ctrl+C and run `npx expo start --tunnel` instead.
+
+## Part 3: Try it
+
+1. Pick a display name.
+2. Go to **Earn** and tap **Watch video**. In test mode a fake 5-second video plays; collect your 10 points. Do this a few times.
+3. Go to **Games**, pick a sport, and tap a line to make a pick.
+4. Check **My Picks** after the game ends. Picks are graded a few hours after games finish (on the free plan, scores are checked a few times a day).
+5. **Leaders** shows the weekly and monthly boards.
+
+Lines only appear after the server's first update for that sport. On the free plan each sport updates about 2 hours before its first game of the day, and only the busiest couple of sports get an update each day. If a sport shows no games, try another one or check back later.
+
+## Admin checks (optional)
+
+See how many Odds API credits are left (replace the URL and password):
+
+```
+curl https://callyourshot-api.onrender.com/admin/budget -H "authorization: Bearer YOUR_ADMIN_PASSWORD"
+```
+
+The README has the commands for announcing prizes.
