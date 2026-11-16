@@ -1,0 +1,39 @@
+# Render Blueprint for the Call Your Shot API.
+# In Render: New > Blueprint, pick this repo, then fill in the secret values it asks for.
+services:
+  - type: web
+    name: callyourshot-api
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Secrets: Render asks for these when you create the Blueprint. Never commit them.
+      - key: ODDS_API_KEY
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      # Credits in your Odds API plan: 500 on the free tier, 20000 on the $30 plan.
+      - key: ODDS_API_MONTHLY_CREDITS
+        value: "500"
+      # Day of the month your Odds API plan renews.
+      - key: ODDS_API_RESET_DAY
+        value: "16"
+      # "stub" plays a fake 5-second video so you can test without an ad account.
+      - key: AD_PROVIDER
+        value: stub
+      - key: DB_PATH
+        value: ./data/callyourshot.db
+    # The free plan has no persistent disk: the database resets whenever the
+    # service restarts or redeploys. That is fine for testing. Before real
+    # players join, switch to the Starter plan and uncomment this disk, then
+    # change DB_PATH to /var/data/callyourshot.db.
+    # disk:
+    #   name: data
+    #   mountPath: /var/data
+    #   sizeGB: 1
