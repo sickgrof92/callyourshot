@@ -4,7 +4,7 @@ import type { ApiResult, EventSummary, OddsApi, OddsEvent, ScoreEvent } from '..
 import { zonedToEpoch } from '../src/time.ts';
 
 export function testConfig(over: Partial<Config> = {}): Config {
-  return { ...loadConfig(), dbPath: ':memory:', adminToken: 'admin-secret', ...over };
+  return { ...loadConfig(), dbPath: ':memory:', adminToken: 'admin-secret', monthlyCredits: 20000, ...over };
 }
 
 export function testDb(): DB {

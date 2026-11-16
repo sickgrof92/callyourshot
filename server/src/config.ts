@@ -74,7 +74,8 @@ export function loadConfig(): Config {
       'icehockey_nhl',
     ]),
 
-    monthlyCredits: num('ODDS_API_MONTHLY_CREDITS', 20000),
+    // Free tier is 500; the $30 plan is 20000. This is the only setting to change when upgrading.
+    monthlyCredits: num('ODDS_API_MONTHLY_CREDITS', 500),
     reserveFraction: num('ODDS_API_RESERVE_FRACTION', 0.1),
     hardFloorFraction: num('ODDS_API_HARD_FLOOR_FRACTION', 0.01),
     billingResetDay: num('ODDS_API_RESET_DAY', 1),

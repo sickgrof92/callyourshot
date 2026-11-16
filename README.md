@@ -27,7 +27,9 @@ These are enforced in code, not just policy:
 
 **Leaderboards.** A player's score for a week (Monday to Monday, Eastern) or month is the points they gained in it: video rewards plus pick results for games that started in it. Ties go to whoever got there first.
 
-## Credit budget (The Odds API, $30 plan, 20,000 credits/month)
+## Credit budget (The Odds API)
+
+The plan size is one setting, `ODDS_API_MONTHLY_CREDITS`. It defaults to **500 (free tier)**. When you upgrade to the $30 plan, set it to `20000` and restart; nothing else changes. Also set `ODDS_API_RESET_DAY` to the day of the month your plan renews.
 
 | Call | Cost | When |
 | --- | --- | --- |
@@ -40,11 +42,25 @@ The scheduler (`server/src/scheduler.ts`) ticks every minute and spends only whe
 - **Only sports with games today** (5 AM to 5 AM Eastern) get line refreshes.
 - **Rare early, frequent late:** every 4 hours when the next game is more than 3 hours away, every 30 minutes inside the 3 hours before a game.
 - **Tracks credits:** every response's `x-requests-remaining` / `x-requests-last` headers are logged in `api_calls`.
-- **Daily allowance:** each day gets (remaining − 10% reserve) ÷ days left in the billing period, which is about 600/day at the start of a month. Unused credits roll forward.
+- **Daily allowance:** each day gets (remaining − 10% reserve) ÷ days left in the billing period: about 15/day on the free tier, about 600/day on the $30 plan. Unused credits roll forward.
 - **Slows down near the limit:** if the rest of today's plan would overspend the allowance, or the month is running ahead of pace, every interval is stretched proportionally (up to 8x).
 - **Reserve:** inside the last 10%, line refreshes stop and score checks drop to every 2 hours so picks still get graded. At 1% everything stops.
 
-A month of simulated busy slates spends about 180 to 260 credits a day before grading, well under the allowance. Run `npm run simulate` in `server/` to see the day-by-day numbers.
+**Small plans (lean mode).** When a day's allowance is under 60 credits (the free tier gives about 15), the scheduler switches to a lean schedule instead:
+
+- It picks which sports get a line refresh today, busiest slate first, as many as fit after setting aside credits for grading. On the free tier that is usually 2 sports a day.
+- Each chosen sport refreshes once, about 2 hours before its first game.
+- Scores are checked at most once per sport every 6 hours, after that sport's pending games should be over, so one call grades a whole night.
+- Sports skipped today keep the lines from their last refresh (every refresh also brings lines for that sport's upcoming games on later days).
+
+Simulated busy month with a player picking every game (`npm run simulate` in `server/`):
+
+| Plan | Credits/day | Line refreshes/day | Spent in 30 days | Picks graded |
+| --- | --- | --- | --- | --- |
+| Free, 500 | ~14 | 2 | 449 (51 left) | all |
+| $30, 20,000 | ~180–310 | ~60–85 | ~7,400 | all |
+
+`ODDS_API_MONTHLY_CREDITS=20000 npm run simulate` shows the paid-plan numbers.
 
 ## Running locally
 
@@ -53,7 +69,7 @@ Server (Node 22.13+):
 ```bash
 cd server
 npm install
-cp .env.example .env     # add ODDS_API_KEY and ADMIN_TOKEN
+cp .env.example .env     # add ODDS_API_KEY and ADMIN_TOKEN (never commit .env)
 set -a; . ./.env; set +a
 npm run dev              # http://localhost:8080
 npm test

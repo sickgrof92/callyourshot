@@ -112,6 +112,8 @@ export function decide(plans: SportPlan[], budget: BudgetStatus, now: number, cf
       ? []
       : plans.filter((p) => p.lastEventsAt === null || now - p.lastEventsAt >= EVENTS_INTERVAL).map((p) => p.sport);
 
+  if (budget.allowanceToday < LEAN_ALLOWANCE) return decideLean(plans, budget, now, cfg, events);
+
   let estimatedCost = 0;
   for (const p of plans) {
     estimatedCost += estimateOddsCalls(p.upcomingToday, p.lastOddsAt, now) * oddsCost;
@@ -146,6 +148,67 @@ export function decide(plans: SportPlan[], budget: BudgetStatus, now: number, cf
   }
 
   return { events, odds, scores, pressure, estimatedCost, budget };
+}
+
+// ---- Lean mode -------------------------------------------------------------
+// For small plans (e.g. the free tier's 500 credits/month, ~15/day) the normal
+// schedule would spend the whole day's allowance at 5 AM. Instead:
+//  - each day, pick which sports get a line refresh, busiest slate first, as
+//    many as fit after setting aside credits for grading;
+//  - refresh each chosen sport once, about 2 hours before its first game;
+//  - fetch scores at most once per sport every 6 hours, after its pending
+//    games for the day should be over (or once a result has waited 12 hours).
+// Sports skipped today keep the lines from their last refresh (lines for
+// future games come back with every refresh of that sport).
+
+/** Below this daily allowance (credits) the scheduler switches to lean mode. */
+export const LEAN_ALLOWANCE = 60;
+export const LEAN_LINES_LEAD = 2 * HOUR;
+export const LEAN_SCORES_GAP = 6 * HOUR;
+export const LEAN_SCORES_MAX_WAIT = 12 * HOUR;
+
+/** Sports that get today's single line refresh in lean mode, busiest first. */
+export function leanLineSports(plans: SportPlan[], allowanceToday: number, oddsCost: number): string[] {
+  const playing = plans.filter((p) => p.startsToday.length > 0).sort((a, b) => b.startsToday.length - a.startsToday.length);
+  // Keep up to half the day's credits for grading: one scores call per sport playing today.
+  const scoresReserve = Math.min(Math.floor(allowanceToday / 2), SCORES_CALL_COST * playing.length);
+  const slots = Math.max(0, Math.floor((allowanceToday - scoresReserve) / oddsCost));
+  return playing.slice(0, Math.max(slots, allowanceToday >= oddsCost ? 1 : 0)).map((p) => p.sport);
+}
+
+function decideLean(plans: SportPlan[], budget: BudgetStatus, now: number, cfg: Config, events: string[]): Decision {
+  const oddsCost = oddsCallCost(cfg.oddsRegions);
+  const odds: string[] = [];
+  const scores: { sport: string; daysFrom: number }[] = [];
+  const base = { events, odds, scores, pressure: 1, estimatedCost: 0, budget };
+  if (budget.mode === 'halt') return base;
+
+  // Grading first: picks must always settle, even out of the reserve.
+  for (const p of plans) {
+    const len = gameLength(p.sport);
+    const finished = p.pendingStarts.filter((s) => s + len <= now);
+    if (finished.length === 0) continue;
+    if (p.lastScoresAt !== null && now - p.lastScoresAt < LEAN_SCORES_GAP) continue;
+    const stillPlaying = p.pendingStarts.some((s) => s + len > now);
+    const oldestWait = now - (Math.min(...finished) + len);
+    if (stillPlaying && oldestWait < LEAN_SCORES_MAX_WAIT) continue;
+    const daysFrom = Math.min(3, Math.max(1, Math.ceil((now - Math.min(...finished)) / DAY)));
+    scores.push({ sport: p.sport, daysFrom });
+  }
+
+  if (budget.mode !== 'normal') return base;
+  const day = sportsDay(now, cfg.timeZone, cfg.dayStartHour);
+  let left = budget.leftToday - scores.length * SCORES_CALL_COST;
+  for (const sport of leanLineSports(plans, budget.allowanceToday, oddsCost)) {
+    const p = plans.find((x) => x.sport === sport)!;
+    if (p.lastOddsAt !== null && p.lastOddsAt >= day.start) continue; // already refreshed today
+    const first = p.upcomingToday[0];
+    if (first === undefined || now < first - LEAN_LINES_LEAD) continue;
+    if (left < oddsCost) break;
+    odds.push(sport);
+    left -= oddsCost;
+  }
+  return base;
 }
 
 export function buildPlans(db: DB, cfg: Config, now: number): SportPlan[] {
