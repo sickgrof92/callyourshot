@@ -12,11 +12,11 @@ const RULES: [string, string][] = [
   ],
   [
     'Getting points',
-    'In each contest, you are awarded 10 points after watching a short ad. You can refill your points this way up to 5 times per day in each contest (your first 10 points count as one), whenever you are out of points there: under 10 points, with no picks still waiting to be graded. Winning picks pay points back based on how many points you picked with and the line.',
+    'In each contest, you are awarded 10 points after watching a short ad. You can refill your points this way up to 5 times per day in each contest (your first 10 points count as one), whenever you are out of points there: exactly 0 points, with no picks still waiting to be graded. If you have fewer than 10 points left, you can use all of them on one pick. Winning picks pay points back based on how many points you picked with and the line.',
   ],
   [
     'Making picks',
-    "You can use your points to pick the winner, the spread, or the over/under total of real games that both start and end during the contest. To make a pick, you watch a short ad before confirming it. You can make picks on a game until it officially starts. Once you confirm a pick, it can't be changed.",
+    "You can use your points to pick the winner, the spread, or the over/under total of real games that both start and end during the contest. To make a pick, you watch a short ad before confirming it. You can make picks on a game until it officially starts. You can also change a pick at any time until its game starts, by watching a short ad. Changing a pick does not count as forfeiting: the points from your old pick go toward the new one. If a pick ends in a push (the result lands exactly on the line), the points on it are returned to you in full. Picks on games that are postponed or cancelled are refunded as soon as that is announced.",
   ],
   [
     'Forfeiting',
@@ -30,6 +30,10 @@ const RULES: [string, string][] = [
   [
     'Prizes',
     "Each contest's prize is fixed and announced before the contest starts, and will never change once it starts. The player with the most points when the contest ends will be declared its winner. The order of tiebreakers is as follows:\n•  Fewest refills used\n•  Best overall win % for the contest\n•  Total number of winning picks\n•  If players are still tied after those, each will be rewarded with the prize (however, if more than 3 players are still tied, additional tiebreaking methods may be used)",
+  ],
+  [
+    'Contest integrity',
+    "Contests are never cancelled once announced. The stated prize will always be the prize, unless it becomes unavailable for a reason outside of our control, in which case it will be replaced with a prize of equal or greater value. If a winner is found to have committed fraud, they are disqualified and the prize is awarded to the next finisher who did not (normally the 2nd-place finisher). A technical failure on our side will never cost a winner their prize.",
   ],
   [
     'Claiming your prize',

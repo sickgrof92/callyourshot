@@ -31,7 +31,7 @@ import {
 import { AD_REWARD_POINTS, SPORT_LABELS, type Config } from './config.ts';
 import type { DB } from './db.ts';
 import type { LineRow } from './lines.ts';
-import { forfeitPick, listPicks, placePick } from './picks.ts';
+import { changePick, forfeitPick, listPicks, placePick } from './picks.ts';
 import { playerStats } from './profiles.ts';
 import { getPrefs, NOTIFY_KINDS, setPrefs } from './notify.ts';
 import { entryBalance, payoutMultiplier } from './points.ts';
@@ -360,6 +360,36 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
   });
 
   // Give up a pending pick as a loss (needs a completed forfeit ad). Nothing is refunded.
+  app.post('/picks/:id/change', async (req, reply) => {
+    const u = requireUser(req);
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const b = z
+      .object({
+        market: z.enum(['moneyline', 'spread', 'total']),
+        selection: z.enum(['home', 'away', 'over', 'under']),
+        points: z.number().int(),
+        expectedPoint: z.number().nullable().optional(),
+        expectedPrice: z.number().int().optional(),
+        adSessionId: z.string().optional(),
+      })
+      .parse(req.body);
+    const res = changePick(db, cfg, u.id, id, b, clock());
+    if (res.ok) return { balance: res.balance, line: res.line };
+    const code = {
+      not_found: 404,
+      not_pending: 409,
+      locked: 409,
+      no_line: 404,
+      already_picked: 409,
+      not_enough_points: 402,
+      bad_amount: 400,
+      pick_ad_required: 403,
+      contest_not_live: 409,
+      line_moved: 409,
+    }[res.error];
+    return reply.code(code).send(res);
+  });
+
   app.post('/picks/:id/forfeit', async (req, reply) => {
     const u = requireUser(req);
     const { id } = z.object({ id: z.string() }).parse(req.params);

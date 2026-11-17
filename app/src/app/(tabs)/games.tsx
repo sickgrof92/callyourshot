@@ -1,10 +1,10 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Celebration, type CelebrationInfo } from '../../components/Celebration';
 import { ContestSwitcher } from '../../components/ContestSwitcher';
 import { GameButton } from '../../components/GameButton';
-import { PickSheet, type PickTarget } from '../../components/PickSheet';
+import { PickSheet, type Changing, type PickTarget } from '../../components/PickSheet';
 import { PushOffer } from '../../components/PushOffer';
 import { shouldOfferPush } from '../../lib/notifications';
 import { api, API_URL, type Game, type Market, type Selection } from '../../lib/api';
@@ -85,6 +85,19 @@ export default function Games() {
   const [party, setParty] = useState<CelebrationInfo | null>(null);
   const { active } = useContests();
   const [offerPush, setOfferPush] = useState(false);
+  // Opened from My Picks to change a pick: show only that game.
+  const params = useLocalSearchParams<{ change?: string; event?: string; sport?: string; points?: string }>();
+  const [changing, setChanging] = useState<(Changing & { eventId: string }) | null>(null);
+  useEffect(() => {
+    if (params.change && params.event) {
+      setChanging({ pickId: params.change, eventId: params.event, points: Number(params.points) || 0 });
+      if (params.sport) setSport(params.sport);
+    }
+  }, [params.change, params.event, params.sport, params.points]);
+  const stopChanging = () => {
+    setChanging(null);
+    router.setParams({ change: undefined, event: undefined, sport: undefined, points: undefined });
+  };
 
   useEffect(() => {
     api
@@ -136,8 +149,16 @@ export default function Games() {
           </Pressable>
         ))}
       </ScrollView>
+      {changing && (
+        <View style={styles.changeBar}>
+          <Text style={styles.changeText}>Changing your pick: tap a new line on this game.</Text>
+          <Pressable onPress={stopChanging} hitSlop={10} accessibilityRole="button">
+            <Text style={styles.changeCancel}>Cancel</Text>
+          </Pressable>
+        </View>
+      )}
       <FlatList
-        data={games}
+        data={changing ? games.filter((g) => g.id === changing.eventId) : games}
         keyExtractor={(g) => g.id}
         contentContainerStyle={{ padding: space.lg, gap: space.md }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
@@ -148,10 +169,13 @@ export default function Games() {
       />
       <PickSheet
         target={target}
+        changing={changing}
         onClose={() => setTarget(null)}
         onPlaced={(label, points) => {
           setTarget(null);
-          setParty({ title: 'PICK LOCKED IN!', subtitle: `${points} pts on ${label}`, color: colors.win });
+          const wasChange = !!changing;
+          if (wasChange) stopChanging();
+          setParty({ title: wasChange ? 'PICK CHANGED!' : 'PICK LOCKED IN!', subtitle: `${points} pts on ${label}`, color: colors.win });
         }}
       />
       <Celebration
@@ -189,4 +213,7 @@ const styles = StyleSheet.create({
   noLines: { color: colors.muted, fontStyle: 'italic' },
   updated: { color: colors.muted, fontSize: 11, marginTop: space.xs },
   empty: { color: colors.muted, textAlign: 'center', marginTop: 60 },
+  changeBar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: 'rgba(46,242,255,0.12)', borderBottomWidth: 2, borderBottomColor: colors.neon, padding: space.md },
+  changeText: { flex: 1, color: colors.text, fontWeight: '800' },
+  changeCancel: { color: colors.neon, fontWeight: '900' },
 });

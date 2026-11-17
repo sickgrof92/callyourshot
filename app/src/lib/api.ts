@@ -218,6 +218,11 @@ export const api = {
   ) => request<{ pickId: string; balance: number }>('/picks', { method: 'POST', body, token }),
   myPicks: (token: string, competitionId?: string) =>
     request<{ picks: Pick[] }>(`/picks${competitionId ? `?competitionId=${encodeURIComponent(competitionId)}` : ''}`, { token }),
+  changePick: (
+    token: string,
+    pickId: string,
+    body: { market: Market; selection: Selection; points: number; expectedPoint: number | null; expectedPrice: number; adSessionId: string },
+  ) => request<{ balance: number }>(`/picks/${pickId}/change`, { method: 'POST', body, token }),
   forfeitPick: (token: string, pickId: string, adSessionId: string) =>
     request<{ balance: number }>(`/picks/${pickId}/forfeit`, { method: 'POST', body: { adSessionId }, token }),
   startAd: (token: string, purpose: AdPurpose, competitionId?: string) =>

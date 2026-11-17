@@ -41,6 +41,8 @@ export interface Config {
   billingResetDay: number;
 
   schedulerEnabled: boolean;
+  /** For testing: make a week-long, all-sport contest at startup when none is live or upcoming. Turn off before launch. */
+  seedTestContest: boolean;
   schedulerTickSeconds: number;
 
   adProvider: 'stub' | 'admob';
@@ -100,6 +102,7 @@ export function loadConfig(): Config {
     billingResetDay: num('ODDS_API_RESET_DAY', 1),
 
     schedulerEnabled: str('SCHEDULER_ENABLED', 'true') === 'true',
+    seedTestContest: str('SEED_TEST_CONTEST', 'true') === 'true',
     schedulerTickSeconds: num('SCHEDULER_TICK_SECONDS', 60),
 
     adProvider,

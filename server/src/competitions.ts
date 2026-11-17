@@ -409,3 +409,30 @@ export function browseContests(db: DB, f: ContestFilter, now: number, userId: st
     .all(...args, limit + 1, offset) as unknown as Competition[];
   return { rows: rows.slice(0, limit), more: rows.length > limit };
 }
+
+/**
+ * For testing: when no contest is live or upcoming, make a week-long,
+ * all-sport contest that starts in a minute and ends at the start of the sports day
+ * (5 AM ET by default) 7 days later. Returns it, or null if none was needed.
+ */
+export function ensureTestContest(db: DB, cfg: Config, now: number): Competition | null {
+  if (db.prepare('SELECT 1 FROM competitions WHERE ends_at > ?').get(now)) return null;
+  const p = zonedParts(now, cfg.timeZone);
+  const endsAt = zonedToEpoch(p.year, p.month, p.day + 7, cfg.dayStartHour, cfg.timeZone);
+  const r = createCompetition(
+    db,
+    {
+      name: 'Test week: all sports',
+      kind: 'weekly',
+      prize: 'Test prize (for testing only)',
+      prizeDetails: 'A test contest made automatically while SEED_TEST_CONTEST is on. Nothing is awarded.',
+      prizeValue: 0,
+      maxEntries: 1000,
+      // A minute out, since contests must be announced before they start.
+      startsAt: now + 60_000,
+      endsAt,
+    },
+    now,
+  );
+  return r.ok ? r.value : null;
+}

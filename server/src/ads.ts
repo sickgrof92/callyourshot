@@ -39,7 +39,7 @@ const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 export interface AdEligibility {
   pointsAdsToday: number;
   pointsAdsPerDay: number;
-  /** Out of points in this contest (below the minimum pick, nothing in play) with refills left today. */
+  /** Out of points in this contest (exactly 0, nothing in play) with refills left today. */
   canEarnPoints: boolean;
   balance: number;
   pendingPicks: number;
@@ -67,7 +67,7 @@ export function adEligibility(db: DB, cfg: Config, userId: string, competitionId
   return {
     pointsAdsToday: used.n,
     pointsAdsPerDay: cfg.pointsAdsPerDay,
-    canEarnPoints: joined && live && balance < cfg.minPickPoints && pending.n === 0 && used.n < cfg.pointsAdsPerDay,
+    canEarnPoints: joined && live && balance === 0 && pending.n === 0 && used.n < cfg.pointsAdsPerDay,
     balance,
     pendingPicks: pending.n,
     joined,
@@ -78,7 +78,7 @@ export function adEligibility(db: DB, cfg: Config, userId: string, competitionId
 function refusal(e: AdEligibility, cfg: Config): Refusal | null {
   if (!e.joined) return 'not_joined';
   if (!e.live) return 'contest_not_live';
-  if (e.balance >= cfg.minPickPoints) return 'not_out_of_points';
+  if (e.balance > 0) return 'not_out_of_points';
   if (e.pendingPicks > 0) return 'points_in_play';
   if (e.pointsAdsToday >= e.pointsAdsPerDay) return 'daily_limit';
   return null;
