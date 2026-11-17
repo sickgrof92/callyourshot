@@ -1,4 +1,5 @@
 import { buildApp } from './app.ts';
+import { ensureTestContest } from './competitions.ts';
 import { loadConfig } from './config.ts';
 import { openDb } from './db.ts';
 import { HttpOddsApi } from './oddsApi.ts';
@@ -21,6 +22,11 @@ if (cfg.adProvider === 'stub') app.log.warn('AD_PROVIDER=stub: the app completes
 if (cfg.authMode === 'stub') app.log.warn('AUTH_MODE=stub: sign-in is not verified. Fine for testing; set AUTH_MODE=live before launch.');
 if (!cfg.claimsKey) app.log.warn('CLAIMS_KEY is not set: winners cannot submit prize claims.');
 if (!cfg.adminToken) app.log.warn('ADMIN_TOKEN is not set: admin endpoints are disabled.');
+if (cfg.seedTestContest) {
+  const made = ensureTestContest(db, cfg, Date.now());
+  if (made) app.log.info({ id: made.id }, 'Created the test contest "Test week: all sports".');
+  app.log.warn('SEED_TEST_CONTEST is on: a test contest is made whenever none is live or upcoming. Set SEED_TEST_CONTEST=false before launch.');
+}
 
 // Push notifications: check once a minute for anything due.
 const sendPush = expoPushSender(fetch, process.env.EXPO_ACCESS_TOKEN || undefined);

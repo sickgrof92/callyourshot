@@ -25,6 +25,7 @@ The free plan has no disk, so the database resets on every restart or deploy.
 | `ADMOB_AD_UNIT_IDS` | your rewarded ad unit ids, comma separated | Callbacks from any other ad unit are refused. |
 | `TERMS_VERSION` | the date of your final rules, e.g. `2026-12-01` | Recorded with each player's agreement at sign-up. |
 | `EXPO_ACCESS_TOKEN` | optional | Only if you turn on "enhanced push security" in Expo. |
+| `SEED_TEST_CONTEST` | `false` | While testing it's on: whenever no contest is live or upcoming, the server makes a week-long, all-sport "Test week" contest at startup. **Turn it off before launch.** |
 
 The server warns in its log at startup if sign-in or ads are still stubbed, or `CLAIMS_KEY` is missing.
 

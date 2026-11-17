@@ -55,9 +55,9 @@ export default function Points() {
     if (m.canEarnPoints) {
       title = m.pointsAdsToday === 0 && m.balance === 0 ? 'Get your points' : "You're out of points";
       detail = `Watch a short video to get ${me.adRewardPoints} points in this contest. ${left} of ${m.pointsAdsPerDay} refills left today.`;
-    } else if (m.balance >= me.minPickPoints) {
-      title = 'Go make some picks';
-      detail = `You can refill once you're out of points here with no picks in play, up to ${m.pointsAdsPerDay} times per day in each contest.`;
+    } else if (m.balance > 0) {
+      title = m.balance < me.minPickPoints ? `Use your last ${m.balance} points` : 'Go make some picks';
+      detail = `You can refill once you're at exactly 0 points here with no picks in play, up to ${m.pointsAdsPerDay} times per day in each contest.${m.balance < me.minPickPoints ? ` Put all ${m.balance} on one pick to use them up.` : ''}`;
     } else if (m.picksInPlay > 0) {
       title = `Waiting on ${m.picksInPlay} pick${m.picksInPlay === 1 ? '' : 's'}`;
       detail = 'You can refill once your picks in this contest are graded. If a pick is clearly losing, you can forfeit it in My Picks to get back sooner.';
@@ -93,7 +93,7 @@ export default function Points() {
             {!m.canEarnPoints && m.picksInPlay > 0 && m.balance < me.minPickPoints && (
               <GameButton title="Go to My Picks" variant="ghost" icon="list" onPress={() => router.push('/mypicks')} />
             )}
-            {m.balance >= me.minPickPoints && <GameButton title="Make picks" variant="go" icon="american-football" onPress={() => router.push('/games')} />}
+            {m.balance > 0 && <GameButton title="Make picks" variant="go" icon="american-football" onPress={() => router.push('/games')} />}
             {message && <Text style={styles.msg}>{message}</Text>}
           </View>
 

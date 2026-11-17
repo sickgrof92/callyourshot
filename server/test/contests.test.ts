@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.ts';
+import { ensureTestContest } from '../src/competitions.ts';
 import { gradeEvent } from '../src/grading.ts';
 import { applyScores, ingestOdds } from '../src/lines.ts';
 import { et, FakeOddsApi, testConfig, testDb } from './helpers.ts';
@@ -179,5 +180,14 @@ describe('contests (players)', () => {
 
     // Joining after the end is refused.
     expect((await join(c, id)).json().error).toBe('ended');
+  });
+
+  it('makes a week-long, all-sport test contest when none is live or upcoming', () => {
+    const db = testDb();
+    const cfg = testConfig();
+    const now = et(2026, 11, 17, 17);
+    const made = ensureTestContest(db, cfg, now)!;
+    expect(made).toMatchObject({ name: 'Test week: all sports', sport: null, starts_at: now + 60_000, ends_at: et(2026, 11, 24, 5) });
+    expect(ensureTestContest(db, cfg, now + 1000)).toBeNull();
   });
 });

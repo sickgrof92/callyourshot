@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { useCallback, useState } from 'react';
 import { FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
@@ -130,6 +130,16 @@ export default function MyPicks() {
               </Text>
               <Text style={[styles.result, { color: s.color }]}>{result(p)}</Text>
             </View>
+            {p.status === 'pending' && !started(p) && (
+              <GameButton
+                title="Change this pick"
+                variant="ghost"
+                size="sm"
+                icon="swap-horizontal"
+                style={{ marginTop: space.sm }}
+                onPress={() => router.push({ pathname: '/games', params: { change: p.id, event: p.event_id, sport: p.sport, points: String(p.points) } })}
+              />
+            )}
             {p.status === 'pending' && started(p) && (
               <GameButton
                 title="FORFEIT THIS PICK"

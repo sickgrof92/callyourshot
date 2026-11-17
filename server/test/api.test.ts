@@ -234,6 +234,54 @@ describe('end-to-end', () => {
     expect(voidPostponed(db, 'basketball_nba', [], et(2026, 11, 21, 13))).toBe(0);
   });
 
+  it('changes a pick before game time with an ad, with no loss, and locks changes at the start', async () => {
+    const { app, db, cid, loadLines, setClock } = setup(et(2026, 11, 21, 12));
+    await loadLines();
+    const a = await signUp(app, 'chris', cid);
+    await watchAd(app, a, 'points', cid);
+    const ad1 = (await watchAd(app, a, 'pick')).sessionId!;
+    const made = await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad1 });
+    expect(made.statusCode).toBe(200);
+    const pickId = made.json().pickId as string;
+    const change = (body: object) => app.inject({ method: 'POST', url: `/picks/${pickId}/change`, headers: auth(a), payload: body });
+
+    // An ad is required.
+    expect((await change({ market: 'spread', selection: 'away', points: 10 })).json().error).toBe('pick_ad_required');
+    // Switch to the spread, other side. Not a forfeit: the pick stays pending and no points are lost.
+    const ad2 = (await watchAd(app, a, 'pick')).sessionId!;
+    const r = await change({ market: 'spread', selection: 'away', points: 10, adSessionId: ad2 });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().balance).toBe(0);
+    const row = db.prepare('SELECT market, selection, stake, status, forfeited_at FROM picks WHERE id = ?').get(pickId);
+    expect(row).toMatchObject({ market: 'spread', selection: 'away', stake: 10, status: 'pending', forfeited_at: null });
+    expect((db.prepare('SELECT COUNT(*) AS n FROM picks').get() as { n: number }).n).toBe(1);
+
+    // Can't put in more points than the player has.
+    const ad3 = (await watchAd(app, a, 'pick')).sessionId!;
+    expect((await change({ market: 'spread', selection: 'away', points: 20, adSessionId: ad3 })).json().error).toBe('not_enough_points');
+
+    // Locked once the game starts.
+    setClock(et(2026, 11, 21, 19));
+    expect((await change({ market: 'moneyline', selection: 'away', points: 10, adSessionId: ad3 })).json().error).toBe('locked');
+  });
+
+  it('refills only at exactly 0 points, and lets leftover points be used all at once', async () => {
+    const { app, db, cid, loadLines } = setup(et(2026, 11, 21, 12));
+    await loadLines();
+    const a = await signUp(app, 'dana', cid);
+    await watchAd(app, a, 'points', cid);
+    const uid = (db.prepare("SELECT id FROM users WHERE display_name = 'dana'").get() as { id: string }).id;
+    db.prepare('UPDATE competition_entries SET balance = 5 WHERE competition_id = ? AND user_id = ?').run(cid, uid);
+    expect((await mine(app, a, cid)).canEarnPoints).toBe(false);
+    expect((await app.inject({ method: 'POST', url: '/ads/sessions', headers: auth(a), payload: { purpose: 'points', competitionId: cid } })).json().error).toBe(
+      'not_out_of_points',
+    );
+    const ad = (await watchAd(app, a, 'pick')).sessionId!;
+    // Below the 10-point minimum only works for all the leftover points.
+    expect((await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 4, adSessionId: ad })).json().error).toBe('bad_amount');
+    expect((await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 5, adSessionId: ad })).statusCode).toBe(200);
+  });
+
   it('forfeits a pick as a loss after an ad, only once the game has started, so the player can refill again', async () => {
     const { app, db, cid, loadLines, setClock } = setup(et(2026, 11, 21, 12));
     await loadLines();

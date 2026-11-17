@@ -27,7 +27,23 @@ function winReturn(points: number, price: number) {
   return points + (price > 0 ? Math.floor((points * price) / 100) : Math.floor((points * 100) / Math.abs(price)));
 }
 
-export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | null; onClose: () => void; onPlaced: (label: string, points: number) => void }) {
+/** The pick being changed, when the sheet is used to change one instead of making a new one. */
+export interface Changing {
+  pickId: string;
+  points: number;
+}
+
+export function PickSheet({
+  target,
+  changing,
+  onClose,
+  onPlaced,
+}: {
+  target: PickTarget | null;
+  changing?: Changing | null;
+  onClose: () => void;
+  onPlaced: (label: string, points: number) => void;
+}) {
   const { token } = useSession();
   const { active, refresh } = useContests();
   const [points, setPoints] = useState(MIN);
@@ -38,8 +54,10 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
   const [adSessionId, setAdSessionId] = useState<string | null>(null);
   const { watch, adModal } = useAd();
 
+  // Points the player can use: their balance, plus the old pick's points when changing it.
+  const available = (active?.mine?.balance ?? 0) + (changing?.points ?? 0);
   useEffect(() => {
-    setPoints(MIN);
+    setPoints(changing ? Math.min(changing.points, MAX) : available > 0 && available < MIN ? available : MIN);
     setQuote(target?.quote ?? null);
     setMessage(null);
     setAdSessionId(null);
@@ -47,9 +65,11 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
 
   if (!target || !quote) return null;
   const { game, market, selection } = target;
-  const balance = active?.mine?.balance ?? 0;
-  const maxPoints = Math.min(MAX, balance);
-  const tooFew = balance < MIN;
+  const maxPoints = Math.min(MAX, available);
+  // Refills only come at exactly 0, so leftover points under 10 can be used all at once.
+  const tooFew = available === 0;
+  const lowest = Math.min(MIN, maxPoints);
+  const noun = changing ? 'change' : 'pick';
 
   async function watchAd() {
     setBusy(true);
@@ -57,7 +77,7 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
     try {
       const id = await watch('pick');
       if (id) setAdSessionId(id);
-      else setMessage('Watch the whole ad to confirm your pick.');
+      else setMessage(`Watch the whole ad to confirm your ${noun}.`);
     } catch {
       setMessage('No ad is available right now. Try again in a minute.');
     } finally {
@@ -70,7 +90,11 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
     setBusy(true);
     setMessage(null);
     try {
-      await api.makePick(token, { competitionId: active.id, eventId: game.id, market, selection, points, expectedPoint: quote.point, expectedPrice: quote.price, adSessionId });
+      if (changing) {
+        await api.changePick(token, changing.pickId, { market, selection, points, expectedPoint: quote.point, expectedPrice: quote.price, adSessionId });
+      } else {
+        await api.makePick(token, { competitionId: active.id, eventId: game.id, market, selection, points, expectedPoint: quote.point, expectedPrice: quote.price, adSessionId });
+      }
       await refresh();
       onPlaced(lineLabel(market, selection, quote.point, game.homeTeam, game.awayTeam), points);
     } catch (err) {
@@ -81,6 +105,8 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
           setQuote({ point: l.point, price: l.price, payout: Math.round(m * 100) / 100 });
           setMessage('The line just changed. Check the new number and confirm again.');
         } else if (err.code === 'locked') setMessage('This game has started, so picks are locked.');
+        else if (err.code === 'not_pending') setMessage('That pick has already been graded.');
+        else if (err.code === 'bad_amount') setMessage(`Picks are at least ${MIN} points, unless you're using all of your last few points.`);
         else if (err.code === 'already_picked') setMessage(`You already have a ${marketName[market].toLowerCase()} pick on this game.`);
         else if (err.code === 'not_enough_points') setMessage("You don't have enough points for this pick.");
         else if (err.code === 'after_contest_end') setMessage("This game won't be over before your contest ends, so it can't count in it.");
@@ -88,7 +114,7 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
         else if (err.code === 'contest_not_live' || err.code === 'not_joined') setMessage("This contest isn't running right now.");
         else if (err.code === 'pick_ad_required') {
           setAdSessionId(null);
-          setMessage('That ad has expired. Watch another to confirm your pick.');
+          setMessage(`That ad has expired. Watch another to confirm your ${noun}.`);
         }
         else setMessage('Something went wrong. Try again.');
       } else setMessage('Could not reach the server.');
@@ -101,7 +127,7 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={styles.sheet}>
-        {active && <Text style={styles.contest}>IN: {active.name.toUpperCase()}</Text>}
+        {active && <Text style={styles.contest}>{changing ? 'CHANGING YOUR PICK · ' : 'IN: '}{active.name.toUpperCase()}</Text>}
         <Text style={styles.matchup}>
           {game.awayTeam} at {game.homeTeam}
         </Text>
@@ -122,7 +148,7 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
         ) : adSessionId ? (
           <>
             <View style={styles.confirmBox}>
-              <Text style={styles.confirmTitle}>Confirm your pick</Text>
+              <Text style={styles.confirmTitle}>{changing ? 'Confirm your new pick' : 'Confirm your pick'}</Text>
               <Text style={styles.confirmLine}>
                 {points} pts on {lineLabel(market, selection, quote.point, game.homeTeam, game.awayTeam)}
               </Text>
@@ -131,7 +157,8 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
               </Text>
             </View>
             {message && <Text style={styles.msg}>{message}</Text>}
-            <GameButton title="Confirm pick" variant="go" size="lg" icon="checkmark-circle" busy={busy} heavy onPress={confirm} />
+            {changing && <Text style={styles.ret}>Your old pick's {changing.points} points go back first. Changing isn't a forfeit.</Text>}
+            <GameButton title={changing ? 'Confirm change' : 'Confirm pick'} variant="go" size="lg" icon="checkmark-circle" busy={busy} heavy onPress={confirm} />
             <Pressable style={styles.cancel} onPress={onClose}>
               <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
@@ -139,7 +166,7 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
         ) : (
           <>
             <View style={styles.stepper}>
-              <GameButton variant="neon" size="sm" style={styles.step} onPress={() => setPoints((p) => Math.max(MIN, p - 10))}>
+              <GameButton variant="neon" size="sm" style={styles.step} onPress={() => setPoints((p) => Math.max(lowest, p - 10))}>
                 <Text style={styles.stepText}>-</Text>
               </GameButton>
               <PointsCounter value={points} suffix=" pts" style={[styles.points, glow(colors.accent, 10)]} />
@@ -160,7 +187,7 @@ export function PickSheet({ target, onClose, onPlaced }: { target: PickTarget | 
               Win and get back <Text style={{ color: colors.win, fontWeight: '800' }}>{winReturn(points, quote.price)} pts</Text>
             </Text>
             {message && <Text style={styles.msg}>{message}</Text>}
-            <GameButton title="Watch ad to confirm pick" size="lg" icon="play-circle" busy={busy} onPress={watchAd} />
+            <GameButton title={changing ? 'Watch short ad to change pick' : 'Watch ad to confirm pick'} size="lg" icon="play-circle" busy={busy} onPress={watchAd} />
           </>
         )}
       </View>
