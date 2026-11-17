@@ -19,6 +19,11 @@ export function ContestCard({ c, onJoin, joining }: { c: Contest; onJoin: (c: Co
         </Text>
       </View>
       <Text style={styles.name}>{c.name}</Text>
+      <View style={styles.tags}>
+        <Text style={styles.tag}>{c.sportLabel ? `${c.sportLabel} only` : 'All sports'}</Text>
+        <Text style={styles.tag}>{c.lengthDays <= 1 ? '1 day' : `${Math.round(c.lengthDays)} days`}</Text>
+        <Text style={styles.tag}>{c.prizeType === 'physical' ? 'Physical prize' : 'Gift card'}</Text>
+      </View>
       <Text style={styles.prizeLabel}>PRIZE</Text>
       <Text style={[styles.prize, glow(colors.accent, 10)]}>{c.prize}</Text>
       <View style={styles.entriesRow}>
@@ -63,6 +68,8 @@ const styles = StyleSheet.create({
   kind: { color: '#120A2E', fontWeight: '900', fontSize: 11, letterSpacing: 1.2, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: 'hidden' },
   clock: { color: colors.muted, fontWeight: '700', fontSize: 12 },
   name: { color: colors.text, fontSize: 18, fontWeight: '900' },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  tag: { color: colors.muted, fontSize: 11, fontWeight: '800', borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2, overflow: 'hidden' },
   prizeLabel: { color: colors.muted, fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginTop: 4 },
   prize: { color: colors.accent, fontSize: 22, fontWeight: '900' },
   entriesRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },

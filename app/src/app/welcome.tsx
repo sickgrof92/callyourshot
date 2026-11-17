@@ -59,7 +59,7 @@ export default function Welcome() {
       const res = await api.signIn({ provider, idToken: id.idToken });
       if ('token' in res) {
         await signedIn(res.token);
-        router.replace('/contests');
+        router.replace('/');
         return;
       }
       setPending({ provider, idToken: id.idToken });
@@ -83,7 +83,7 @@ export default function Welcome() {
       const res = await api.signIn({ ...pending, profile: { displayName: name.trim(), email: email.trim(), phone: phone.trim(), country, region: region ?? '', acceptedTerms: true } });
       if ('token' in res) {
         await signedIn(res.token);
-        router.replace('/contests');
+        router.replace('/');
       }
     } catch (err) {
       warn();

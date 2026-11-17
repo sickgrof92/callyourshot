@@ -148,6 +148,10 @@ CREATE TABLE IF NOT EXISTS competitions (
   prize_details  TEXT NOT NULL DEFAULT '',
   -- Retail value in US dollars, for tax forms. 0 if not set.
   prize_value    INTEGER NOT NULL DEFAULT 0,
+  -- 'gift_card' or 'physical' (shown as a filter in the app).
+  prize_type     TEXT NOT NULL DEFAULT 'gift_card' CHECK (prize_type IN ('gift_card','physical')),
+  -- An Odds API sport key for a single-sport contest, or NULL for any sport.
+  sport          TEXT,
   max_entries    INTEGER NOT NULL CHECK (max_entries > 0),
   starts_at      INTEGER NOT NULL,
   ends_at        INTEGER NOT NULL,
@@ -156,6 +160,18 @@ CREATE TABLE IF NOT EXISTS competitions (
   finalized_at   INTEGER
 );
 CREATE INDEX IF NOT EXISTS competitions_time ON competitions(ends_at, starts_at);
+CREATE INDEX IF NOT EXISTS competitions_start ON competitions(starts_at);
+
+-- Messages players send from Contact us. The admin page lists them.
+CREATE TABLE IF NOT EXISTS contact_messages (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id),
+  topic      TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  handled_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS contact_messages_time ON contact_messages(created_at);
 
 -- Joining is free. One row per player per contest, holding that contest's
 -- points balance. Everyone starts at 0.
@@ -208,7 +224,15 @@ function migrate(db: DB): void {
   const colsOf = (t: string) => (db.prepare(`SELECT name FROM pragma_table_info('${t}')`).all() as { name: string }[]).map((x) => x.name);
   const ledger = colsOf('ledger');
   if (ledger.length === 0) return; // fresh database
-  if (ledger.includes('competition_id') && colsOf('users').includes('push_token') && colsOf('competitions').includes('prize_value')) return;
+  if (ledger.includes('competition_id') && colsOf('users').includes('push_token') && colsOf('competitions').includes('prize_value')) {
+    // Columns added later keep existing data.
+    const comp = colsOf('competitions');
+    if (!comp.includes('prize_type')) {
+      db.exec("ALTER TABLE competitions ADD COLUMN prize_type TEXT NOT NULL DEFAULT 'gift_card' CHECK (prize_type IN ('gift_card','physical'))");
+    }
+    if (!comp.includes('sport')) db.exec('ALTER TABLE competitions ADD COLUMN sport TEXT');
+    return;
+  }
   db.exec('PRAGMA foreign_keys = OFF');
   for (const t of ['prize_claims', 'ledger', 'picks', 'ad_sessions', 'competition_entries', 'competitions', 'prizes', 'users']) db.exec(`DROP TABLE IF EXISTS ${t}`);
   db.exec('PRAGMA foreign_keys = ON');

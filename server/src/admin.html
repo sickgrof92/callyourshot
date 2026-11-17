@@ -83,6 +83,11 @@
         <div><label for="max">Max entries</label><input id="max" type="number" min="1" value="500" inputmode="numeric"></div>
         <div><label for="value">Prize value ($)</label><input id="value" type="number" min="0" value="0" inputmode="numeric"></div>
       </div>
+      <div class="row">
+        <div><label for="ptype">Prize type</label>
+          <select id="ptype"><option value="gift_card">Gift card</option><option value="physical">Physical prize</option></select></div>
+        <div><label for="sport">Sport</label><select id="sport" class="sportSel"></select></div>
+      </div>
       <div class="muted" style="margin-top:6px">Prize value is used to ask US winners for a tax ID when it is $600 or more (for a 1099).</div>
       <div class="row">
         <div><label for="start">Starts</label><input id="start" type="datetime-local"></div>
@@ -123,12 +128,18 @@
         <div><label for="bMax">Max entries each</label><input id="bMax" type="number" min="1" value="500" inputmode="numeric"></div>
         <div><label for="bValue">Prize value ($)</label><input id="bValue" type="number" min="0" value="0" inputmode="numeric"></div>
       </div>
+      <div class="row">
+        <div><label for="bPtype">Prize type</label>
+          <select id="bPtype"><option value="gift_card">Gift card</option><option value="physical">Physical prize</option></select></div>
+        <div><label for="bSport">Sport</label><select id="bSport" class="sportSel"></select></div>
+      </div>
       <div class="muted" id="bPreview" style="margin-top:8px"></div>
       <div id="bMsg"></div>
       <div class="actions"><button id="bSave">Create all</button></div>
     </div>
 
     <h2>Winners</h2><div id="claims"></div>
+    <h2>Messages</h2><div id="messages"></div>
     <h2>Upcoming</h2><div id="upcoming"></div>
     <h2>Live</h2><div id="live"></div>
     <h2>Ended</h2><div id="ended"></div>
@@ -180,6 +191,11 @@
     $('budget').textContent = `Odds API credits left: ${b.remaining} · today's budget ${b.spentToday}/${b.allowanceToday}${b.mode !== 'normal' ? ` · ${b.mode.toUpperCase()}` : ''}`;
     render();
     loadClaims().catch((err) => { if (err.message !== 'auth') $('claims').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; });
+    loadMessages().catch((err) => { if (err.message !== 'auth') $('messages').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; });
+    document.querySelectorAll('.sportSel').forEach((sel) => {
+      if (sel.options.length) return;
+      sel.innerHTML = '<option value="">All sports</option>' + data.sports.map((x) => `<option value="${esc(x.key)}">${esc(x.label)} only</option>`).join('');
+    });
     if (!editing && !$('name').value) pickKind(kind);
     if (!$('bFirst').value) runPreset('weekly');
     preview();
@@ -195,7 +211,7 @@
   function bulkBody() {
     return {
       kind: $('bKind').value, name: $('bName').value, prize: $('bPrize').value, prizeDetails: $('bDetails').value,
-      maxEntries: Number($('bMax').value), prizeValue: Number($('bValue').value) || 0, firstStart: fromLocalInput($('bFirst').value),
+      maxEntries: Number($('bMax').value), prizeValue: Number($('bValue').value) || 0, prizeType: $('bPtype').value, sport: $('bSport').value || null, firstStart: fromLocalInput($('bFirst').value),
       lengthDays: Number($('bLength').value), everyDays: Number($('bEvery').value), count: Number($('bCount').value),
     };
   }
@@ -240,6 +256,7 @@
       <span class="badge ${c.status}">${c.status} · ${c.kind}</span>
       <h3>${esc(c.name)}</h3>
       <div class="prize">🏆 ${esc(c.prize)}</div>
+      <div class="muted">${c.prizeType === 'physical' ? 'Physical prize' : 'Gift card'} · ${c.sportLabel ? esc(c.sportLabel) + ' only' : 'All sports'}</div>
       ${c.prizeDetails ? `<div class="muted">${esc(c.prizeDetails)}</div>` : ''}
       <div class="bar"><div style="width:${pct}%"></div></div>
       <div class="muted">${c.entries} / ${c.maxEntries} entered · ${when(c.startsAt)} → ${when(c.endsAt)}</div>
@@ -265,6 +282,27 @@
     ineligible: 'Not eligible', rejected: 'Rejected',
   };
   let claims = [];
+  // ---- Contact us messages ----
+  const TOPIC = { question: 'Question', problem: 'Problem', prize: 'Prize', idea: 'Idea', other: 'Other' };
+  async function loadMessages() {
+    const r = await api('/admin/messages');
+    const open = r.messages.filter((m) => !m.handled_at).length;
+    $('messages').previousElementSibling.textContent = `Messages (${open} new)`;
+    $('messages').innerHTML = r.messages.length
+      ? r.messages.map((m) => `<div class="card" style="${m.handled_at ? 'opacity:.55' : ''}">
+          <span class="badge ${m.handled_at ? 'ended' : 'live'}">${TOPIC[m.topic] || esc(m.topic)}</span>
+          <div style="white-space:pre-wrap;margin:8px 0">${esc(m.body)}</div>
+          <div class="muted">${esc(m.display_name)} · <a href="mailto:${esc(m.email)}" style="color:inherit">${esc(m.email)}</a> · ${esc(m.phone)} · ${when(new Date(m.created_at).toISOString())}</div>
+          <div class="actions"><button class="small ghost" data-msg="${esc(m.id)}" data-handled="${m.handled_at ? '0' : '1'}">${m.handled_at ? 'Mark new' : 'Mark done'}</button></div>
+        </div>`).join('')
+      : '<div class="muted">No messages yet. Players send these from Contact us in the app menu.</div>';
+  }
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest && e.target.closest('button[data-msg]'); if (!b) return;
+    try { await api(`/admin/messages/${encodeURIComponent(b.dataset.msg)}`, { method: 'PUT', body: { handled: b.dataset.handled === '1' } }); await loadMessages(); }
+    catch {}
+  });
+
   async function loadClaims() {
     const r = await api('/admin/claims');
     claims = r.claims;
@@ -322,20 +360,20 @@
   function formBody() {
     return {
       name: $('name').value, kind, prize: $('prize').value, prizeDetails: $('details').value,
-      maxEntries: Number($('max').value), prizeValue: Number($('value').value) || 0, startsAt: fromLocalInput($('start').value), endsAt: fromLocalInput($('end').value),
+      maxEntries: Number($('max').value), prizeValue: Number($('value').value) || 0, prizeType: $('ptype').value, sport: $('sport').value || null, startsAt: fromLocalInput($('start').value), endsAt: fromLocalInput($('end').value),
     };
   }
 
   function resetForm() {
     editing = null; $('formTitle').textContent = 'One contest'; $('saveBtn').textContent = 'Create contest';
-    $('cancelEdit').classList.add('hidden'); $('name').value = ''; $('prize').value = ''; $('details').value = ''; $('max').value = 500; $('value').value = 0;
+    $('cancelEdit').classList.add('hidden'); $('name').value = ''; $('prize').value = ''; $('details').value = ''; $('max').value = 500; $('value').value = 0; $('ptype').value = 'gift_card'; $('sport').value = '';
     pickKind(kind);
   }
 
   function fillForm(c, shiftMs) {
     kind = c.kind;
     document.querySelectorAll('#kinds button').forEach((b) => b.classList.toggle('on', b.dataset.kind === kind));
-    $('name').value = c.name; $('prize').value = c.prize; $('details').value = c.prizeDetails; $('max').value = c.maxEntries; $('value').value = c.prizeValue || 0;
+    $('name').value = c.name; $('prize').value = c.prize; $('details').value = c.prizeDetails; $('max').value = c.maxEntries; $('value').value = c.prizeValue || 0; $('ptype').value = c.prizeType || 'gift_card'; $('sport').value = c.sport || '';
     $('start').value = toLocalInput(new Date(Date.parse(c.startsAt) + shiftMs).toISOString());
     $('end').value = toLocalInput(new Date(Date.parse(c.endsAt) + shiftMs).toISOString());
     window.scrollTo({ top: 0, behavior: 'smooth' });

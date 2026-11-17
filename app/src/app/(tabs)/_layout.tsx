@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Redirect, router, Tabs } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, View, type ColorValue } from 'react-native';
+import { MenuButton } from '../../components/Menu';
 import { PointsCounter } from '../../components/PointsCounter';
 import { useContests } from '../../lib/contests';
 import { useSession } from '../../lib/session';
@@ -20,9 +21,18 @@ function Balance() {
 /** One tap to the notification switches, from every tab. */
 function Bell() {
   return (
-    <Pressable onPress={() => router.push('/notifications')} hitSlop={12} style={{ marginLeft: 16 }} accessibilityLabel="Notification settings">
+    <Pressable onPress={() => router.push('/notifications')} hitSlop={12} style={{ marginRight: 14 }} accessibilityLabel="Notification settings">
       <Ionicons name="notifications" size={22} color={colors.neon} />
     </Pressable>
+  );
+}
+
+function HeaderRight() {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <Bell />
+      <Balance />
+    </View>
   );
 }
 
@@ -49,8 +59,8 @@ export default function TabsLayout() {
         headerTitleStyle: { fontWeight: '900', letterSpacing: 1 },
         headerTintColor: colors.text,
         headerShadowVisible: false,
-        headerRight: () => <Balance />,
-        headerLeft: () => <Bell />,
+        headerRight: () => <HeaderRight />,
+        headerLeft: () => <MenuButton />,
         tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border, borderTopWidth: 2, height: 64, paddingTop: 6 },
         tabBarLabelStyle: { fontWeight: '800', fontSize: 11 },
         tabBarActiveTintColor: colors.accent,
@@ -58,9 +68,10 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Games', tabBarIcon: icon('american-football') }} />
+      {/* Contests is the home screen. */}
+      <Tabs.Screen name="index" options={{ title: 'Contests', headerTitle: '', tabBarIcon: icon('trophy') }} />
+      <Tabs.Screen name="games" options={{ title: 'Games', tabBarIcon: icon('american-football') }} />
       <Tabs.Screen name="earn" options={{ title: 'Points', tabBarIcon: icon('flash') }} />
-      <Tabs.Screen name="contests" options={{ title: 'Contests', headerTitle: '', tabBarIcon: icon('trophy') }} />
       <Tabs.Screen name="mypicks" options={{ title: 'My Picks', tabBarIcon: icon('list') }} />
     </Tabs>
   );

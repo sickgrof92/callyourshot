@@ -32,7 +32,7 @@ export function NotificationRouter() {
       }
       if (kind === 'results' || kind === 'gameStart') router.push('/mypicks');
       else if (data.contestId) router.push(`/contest/${data.contestId}`);
-      else router.push('/contests');
+      else router.push('/');
     });
   }, [token]);
 

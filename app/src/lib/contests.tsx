@@ -36,7 +36,8 @@ export function ContestsProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      setAll((await api.contests(token)).competitions);
+      // Only the contests this player is in (live or upcoming).
+      setAll(token ? (await api.contests(token, { status: 'mine', limit: 100 })).competitions : []);
     } catch {
       // keep what we had
     } finally {

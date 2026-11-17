@@ -37,6 +37,10 @@ These are enforced in code, not just policy:
 
 **Accounts.** Players sign in with Apple or Google and give a display name, email, phone, and state or province, and agree to the rules. Each email and phone can only be on one account (Gmail dots and +tags count as the same address). Phone verification by text isn't on yet; the `phone_verified_at` column is ready for it.
 
+**Browsing contests.** Contests is the home screen. Players filter by sport, start time, length, size (max players) and prize type, and sort by starting soonest, most players or ending soonest. The server filters, sorts and pages the list (`GET /competitions`, 20 at a time), so it stays quick with many contests. Picking a sport also shows contests open to every sport. Filters are remembered on the phone.
+
+**Menu.** The ☰ button on every tab opens: Contests, My profile & stats, My picks, Notification settings, How to play & FAQ, Rules, Privacy policy, Contact us and Sign out.
+
 **Profiles.** Tapping a name on a board shows that player's record (W-L-T, forfeits as losses and pushes as ties), win %, longest win streak, reloads and contests won. Never their email, phone or location.
 
 **Notifications** (Expo push), all on by default and each switchable from the bell on every tab or straight from the notification: a contest you joined is starting, a game you picked is starting, your pick won or lost, and a new contest you haven't joined has opened. The app asks for permission after a player's first pick, not at launch.
@@ -116,11 +120,12 @@ The app passes a one-time session id as the SSV custom data; the server verifies
 
 Open `https://<your-server>/admin` on your phone or computer and sign in with `ADMIN_TOKEN`. From there you can:
 
-- **Create one contest:** tap Daily, Weekly or Monthly to fill in the next open dates, then set the name, prize, prize value, max entries and times.
+- **Create one contest:** tap Daily, Weekly or Monthly to fill in the next open dates, then set the name, prize, prize value, prize type (gift card or physical), sport (all sports, or one sport only) and max entries and times. A one-sport contest only takes picks on that sport.
 - **Schedule a run:** "7-day contests, one starting each day" or "30-day contests, one every Monday" fills in a batch (up to 60 at once), each named after its start day.
 - **Edit or delete** a contest until it starts. Once it starts it's locked.
 - **Copy** a contest to the next day or week.
 - **Standings** with the tiebreak columns, and **Pick winner** once a contest has ended and its picks are graded.
+- **Messages:** what players send from Contact us in the app menu, with their email and phone so you can reply. Tap Mark done when handled.
 - **Winners:** each claim shows as Waiting on winner, Needs review, Verified, Paid, Not eligible or Rejected, with the winner's details. Tap Mark verified, then Mark paid after you send the prize.
 
 The page also shows Odds API credits left. Too many wrong passwords lock the admin page for a while.

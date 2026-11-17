@@ -13,7 +13,7 @@ export function ContestSwitcher() {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyText}>Everything happens inside a contest. Join one to get points and make picks.</Text>
-        <GameButton title="Find a contest" variant="pink" size="sm" icon="trophy" onPress={() => router.push('/contests')} />
+        <GameButton title="Find a contest" variant="pink" size="sm" icon="trophy" onPress={() => router.push('/')} />
       </View>
     );
   }

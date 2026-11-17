@@ -21,6 +21,11 @@ import {
   statusOf,
   updateCompetition,
   type Competition,
+  browseContests,
+  LENGTHS,
+  PRIZE_TYPES,
+  SIZES,
+  SORTS,
 } from './competitions.ts';
 import { AD_REWARD_POINTS, SPORT_LABELS, type Config } from './config.ts';
 import type { DB } from './db.ts';
@@ -121,6 +126,10 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
       prize: c.prize,
       prizeDetails: c.prize_details,
       prizeValue: c.prize_value,
+      prizeType: c.prize_type,
+      sport: c.sport,
+      sportLabel: c.sport ? (SPORT_LABELS[c.sport] ?? c.sport) : null,
+      lengthDays: Math.round(((c.ends_at - c.starts_at) / DAY) * 10) / 10,
       maxEntries: c.max_entries,
       entries: entryCount(db, c.id),
       startsAt: new Date(c.starts_at).toISOString(),
@@ -330,6 +339,7 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
       not_joined: 403,
       contest_not_live: 409,
       after_contest_end: 409,
+      wrong_sport: 409,
     }[res.error];
     return reply.code(status).send(res);
   });
@@ -419,14 +429,57 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
 
   // ---- Contests (players) ---------------------------------------------------
 
+  // Browse contests with filters, a page at a time. Filtering and sorting happen in SQL.
+  const browseQuery = z.object({
+    status: z.enum(['open', 'live', 'upcoming', 'mine']).optional(),
+    sport: z.string().max(60).optional(),
+    prizeType: z.enum(PRIZE_TYPES).optional(),
+    size: z.enum(Object.keys(SIZES) as [keyof typeof SIZES]).optional(),
+    length: z.enum(Object.keys(LENGTHS) as [keyof typeof LENGTHS]).optional(),
+    startFrom: z.string().datetime({ offset: true }).optional(),
+    startTo: z.string().datetime({ offset: true }).optional(),
+    sort: z.enum(SORTS).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).max(100_000).optional(),
+  });
   app.get('/competitions', async (req) => {
     const now = clock();
     const userId = optionalUserId(req);
-    // Upcoming and live, plus anything that ended in the last 3 days.
-    const rows = db
-      .prepare('SELECT * FROM competitions WHERE ends_at > ? ORDER BY starts_at, ends_at, name')
-      .all(now - 3 * DAY) as unknown as Competition[];
-    return { competitions: rows.map((c) => contestJson(c, now, userId)) };
+    const q = browseQuery.parse(req.query);
+    const { rows, more } = browseContests(
+      db,
+      { ...q, startFrom: q.startFrom ? Date.parse(q.startFrom) : undefined, startTo: q.startTo ? Date.parse(q.startTo) : undefined },
+      now,
+      userId,
+    );
+    const offset = q.offset ?? 0;
+    // Contests this player won and still needs to claim, so they can find them after the contest ends.
+    const toClaim =
+      userId && offset === 0
+        ? (db
+            .prepare(
+              `SELECT c.* FROM prize_claims pc JOIN competitions c ON c.id = pc.competition_id
+               WHERE pc.user_id = ? AND pc.status = 'pending' ORDER BY c.ends_at DESC LIMIT 10`,
+            )
+            .all(userId) as unknown as Competition[])
+        : [];
+    return {
+      toClaim: toClaim.map((c) => contestJson(c, now, userId)),
+      competitions: rows.map((c) => contestJson(c, now, userId)),
+      nextOffset: more ? offset + rows.length : null,
+      sports: cfg.sports.map((key) => ({ key, label: SPORT_LABELS[key] ?? key })),
+    };
+  });
+
+  // Contact us: messages land on the admin page. A few per day per player.
+  app.post('/contact', async (req, reply) => {
+    const u = requireUser(req);
+    const b = z.object({ topic: z.enum(['question', 'problem', 'prize', 'idea', 'other']), body: z.string().trim().min(5).max(2000) }).parse(req.body);
+    const now = clock();
+    const recent = db.prepare('SELECT COUNT(*) AS n FROM contact_messages WHERE user_id = ? AND created_at > ?').get(u.id, now - DAY) as { n: number };
+    if (recent.n >= 5) return reply.code(429).send({ error: 'too_many_messages' });
+    db.prepare('INSERT INTO contact_messages (id, user_id, topic, body, created_at) VALUES (?, ?, ?, ?, ?)').run(randomUUID(), u.id, b.topic, b.body, now);
+    return { sent: true };
   });
 
   app.get('/competitions/:id', async (req, reply) => {
@@ -511,6 +564,8 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
     prize: z.string().max(120),
     prizeDetails: z.string().max(1000).default(''),
     prizeValue: z.number().int().min(0).default(0),
+    prizeType: z.enum(PRIZE_TYPES).default('gift_card'),
+    sport: z.string().max(60).nullable().default(null),
     maxEntries: z.number().int(),
     startsAt: z.string().datetime({ offset: true }),
     endsAt: z.string().datetime({ offset: true }),
@@ -525,6 +580,7 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
     return {
       now: new Date(now).toISOString(),
       timeZone: cfg.timeZone,
+      sports: cfg.sports.map((key) => ({ key, label: SPORT_LABELS[key] ?? key })),
       presets: Object.fromEntries(
         Object.entries(p).map(([k, v]) => [
           k,
@@ -552,6 +608,8 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
         prize: z.string().max(120),
         prizeDetails: z.string().max(1000).default(''),
         prizeValue: z.number().int().min(0).default(0),
+        prizeType: z.enum(PRIZE_TYPES).default('gift_card'),
+        sport: z.string().max(60).nullable().default(null),
         maxEntries: z.number().int(),
         firstStart: z.string().datetime({ offset: true }),
         lengthDays: z.number(),
@@ -591,6 +649,26 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
     if (!c) return reply.code(404).send({ error: 'not_found' });
     // Full tiebreak detail for the admin page.
     return { standings: contestStandings(db, c, 50).map(({ userId: _u, ...r }) => r) };
+  });
+
+  // Contact us messages, newest first, with the player's contact details.
+  app.get('/admin/messages', async (req) => {
+    requireAdmin(req);
+    const rows = db
+      .prepare(
+        `SELECT m.id, m.topic, m.body, m.created_at, m.handled_at, u.display_name, u.email, u.phone
+         FROM contact_messages m JOIN users u ON u.id = m.user_id ORDER BY m.handled_at IS NOT NULL, m.created_at DESC LIMIT 100`,
+      )
+      .all() as Record<string, unknown>[];
+    return { messages: rows };
+  });
+
+  app.put('/admin/messages/:id', async (req, reply) => {
+    requireAdmin(req);
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const { handled } = z.object({ handled: z.boolean() }).parse(req.body);
+    const res = db.prepare('UPDATE contact_messages SET handled_at = ? WHERE id = ?').run(handled ? clock() : null, id);
+    return res.changes ? { ok: true } : reply.code(404).send({ error: 'not_found' });
   });
 
   // Winners' claim forms (decrypted for the admin only) and their status.

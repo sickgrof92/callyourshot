@@ -33,7 +33,8 @@ export type PickResult =
         | 'pick_ad_required'
         | 'not_joined'
         | 'contest_not_live'
-        | 'after_contest_end';
+        | 'after_contest_end'
+        | 'wrong_sport';
     }
   | { ok: false; error: 'line_moved'; line: LineRow };
 
@@ -49,15 +50,15 @@ export function placePick(db: DB, cfg: Config, userId: string, input: PickInput,
     return { ok: false, error: 'bad_amount' };
   }
   return tx(db, (): PickResult => {
-    const ev = db.prepare('SELECT commence_time FROM events WHERE id = ?').get(input.eventId) as
-      | { commence_time: number }
+    const ev = db.prepare('SELECT commence_time, sport FROM events WHERE id = ?').get(input.eventId) as
+      | { commence_time: number; sport: string }
       | undefined;
     if (!ev) return { ok: false, error: 'not_found' };
     // Picks lock at the scheduled start time. Pure clock check, no API call.
     if (now >= ev.commence_time) return { ok: false, error: 'locked' };
 
-    const c = db.prepare('SELECT starts_at, ends_at FROM competitions WHERE id = ?').get(input.competitionId) as
-      | { starts_at: number; ends_at: number }
+    const c = db.prepare('SELECT starts_at, ends_at, sport FROM competitions WHERE id = ?').get(input.competitionId) as
+      | { starts_at: number; ends_at: number; sport: string | null }
       | undefined;
     if (!c || !db.prepare('SELECT 1 FROM competition_entries WHERE competition_id = ? AND user_id = ?').get(input.competitionId, userId)) {
       return { ok: false, error: 'not_joined' };
@@ -65,6 +66,8 @@ export function placePick(db: DB, cfg: Config, userId: string, input: PickInput,
     if (now < c.starts_at || now >= c.ends_at) return { ok: false, error: 'contest_not_live' };
     // Only games that start before the contest ends count in it.
     if (ev.commence_time >= c.ends_at) return { ok: false, error: 'after_contest_end' };
+    // A single-sport contest only takes picks on that sport.
+    if (c.sport && ev.sport !== c.sport) return { ok: false, error: 'wrong_sport' };
 
     const line = db
       .prepare('SELECT * FROM lines WHERE event_id = ? AND market = ? AND selection = ?')

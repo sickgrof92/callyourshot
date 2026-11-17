@@ -65,12 +65,43 @@ export interface Pick {
 
 export type ContestKind = 'daily' | 'weekly' | 'monthly';
 
+export type PrizeType = 'gift_card' | 'physical';
+
+/** Filters for browsing contests. All optional; the server filters and pages. */
+export interface ContestQuery {
+  status?: 'open' | 'live' | 'upcoming' | 'mine';
+  sport?: string;
+  prizeType?: PrizeType;
+  size?: 'small' | 'medium' | 'large';
+  length?: 'day' | 'week' | 'month';
+  startFrom?: string;
+  startTo?: string;
+  sort?: 'soonest' | 'popular' | 'ending';
+  limit?: number;
+  offset?: number;
+}
+
+export interface ContestPage {
+  competitions: Contest[];
+  nextOffset: number | null;
+  sports: { key: string; label: string }[];
+  /** Contests I won and still need to claim. */
+  toClaim: Contest[];
+}
+
+export type ContactTopic = 'question' | 'problem' | 'prize' | 'idea' | 'other';
+
 export interface Contest {
   id: string;
   name: string;
   kind: ContestKind;
   prize: string;
   prizeDetails: string;
+  prizeType: PrizeType;
+  /** Single-sport contests only take picks on this sport. Null = any sport. */
+  sport: string | null;
+  sportLabel: string | null;
+  lengthDays: number;
   maxEntries: number;
   entries: number;
   startsAt: string;
@@ -192,7 +223,14 @@ export const api = {
   adStatus: (token: string, id: string) => request<{ rewarded: boolean; balance: number }>(`/ads/sessions/${id}`, { token }),
   completeStubAd: (token: string, id: string) =>
     request<{ rewarded: boolean; balance: number }>(`/ads/sessions/${id}/stub-complete`, { method: 'POST', token }),
-  contests: (token: string | null) => request<{ competitions: Contest[] }>('/competitions', { token }),
+  contests: (token: string | null, q: ContestQuery = {}) => {
+    const qs = Object.entries(q)
+      .filter(([, v]) => v !== undefined && v !== '')
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+      .join('&');
+    return request<ContestPage>(`/competitions${qs ? `?${qs}` : ''}`, { token });
+  },
+  contact: (token: string, topic: ContactTopic, body: string) => request<{ sent: true }>('/contact', { method: 'POST', body: { topic, body }, token }),
   contest: (id: string, token: string | null) => request<ContestDetail>(`/competitions/${encodeURIComponent(id)}`, { token }),
   notifyPrefs: (token: string) => request<NotifyPrefs>('/me/notifications', { token }),
   setNotifyPrefs: (token: string, prefs: Partial<Record<NotifyKind, boolean>>) =>

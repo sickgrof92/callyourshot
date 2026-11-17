@@ -26,7 +26,9 @@ export default function RootLayout() {
         <Stack.Screen name="player/[name]" options={{ title: 'Player' }} />
         <Stack.Screen name="claim/[id]" options={{ title: 'Claim your prize' }} />
         <Stack.Screen name="contest/[id]" options={{ title: 'Contest', headerBackTitle: 'Contests' }} />
-        <Stack.Screen name="rules" options={{ title: 'How it works', presentation: 'modal' }} />
+        <Stack.Screen name="rules" options={{ title: 'Rules' }} />
+        <Stack.Screen name="howto" options={{ title: 'How to play' }} />
+        <Stack.Screen name="contact" options={{ title: 'Contact us' }} />
       </Stack>
       </ContestsProvider>
     </SessionProvider>

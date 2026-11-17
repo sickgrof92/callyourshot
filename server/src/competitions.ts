@@ -21,6 +21,8 @@ import { DAY, zonedParts, zonedToEpoch } from './time.ts';
 
 export const KINDS = ['daily', 'weekly', 'monthly'] as const;
 export type Kind = (typeof KINDS)[number];
+export const PRIZE_TYPES = ['gift_card', 'physical'] as const;
+export type PrizeType = (typeof PRIZE_TYPES)[number];
 
 export interface Competition {
   id: string;
@@ -29,6 +31,8 @@ export interface Competition {
   prize: string;
   prize_details: string;
   prize_value: number;
+  prize_type: PrizeType;
+  sport: string | null;
   max_entries: number;
   starts_at: number;
   ends_at: number;
@@ -44,6 +48,10 @@ export interface CompetitionInput {
   prizeDetails: string;
   /** Retail value in dollars (0 if unknown). US prizes of $600+ ask the winner for a tax id. */
   prizeValue?: number;
+  /** Gift card (default) or a physical prize. */
+  prizeType?: PrizeType;
+  /** Odds API sport key for a single-sport contest; empty or missing means any sport. */
+  sport?: string | null;
   maxEntries: number;
   startsAt: number;
   endsAt: number;
@@ -70,9 +78,22 @@ export function createCompetition(db: DB, input: CompetitionInput, now: number):
   if (err) return { ok: false, error: err };
   const id = randomUUID();
   db.prepare(
-    `INSERT INTO competitions (id, name, kind, prize, prize_details, prize_value, max_entries, starts_at, ends_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(id, input.name.trim(), input.kind, input.prize.trim(), input.prizeDetails.trim(), input.prizeValue ?? 0, input.maxEntries, input.startsAt, input.endsAt, now);
+    `INSERT INTO competitions (id, name, kind, prize, prize_details, prize_value, prize_type, sport, max_entries, starts_at, ends_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    input.name.trim(),
+    input.kind,
+    input.prize.trim(),
+    input.prizeDetails.trim(),
+    input.prizeValue ?? 0,
+    input.prizeType ?? 'gift_card',
+    input.sport || null,
+    input.maxEntries,
+    input.startsAt,
+    input.endsAt,
+    now,
+  );
   return { ok: true, value: getCompetition(db, id)! };
 }
 
@@ -86,8 +107,20 @@ export function updateCompetition(db: DB, id: string, input: CompetitionInput, n
   const entries = entryCount(db, id);
   if (input.maxEntries < entries) return { ok: false, error: `${entries} players have already joined; max entries can't be lower than that.` };
   db.prepare(
-    'UPDATE competitions SET name = ?, kind = ?, prize = ?, prize_details = ?, prize_value = ?, max_entries = ?, starts_at = ?, ends_at = ? WHERE id = ?',
-  ).run(input.name.trim(), input.kind, input.prize.trim(), input.prizeDetails.trim(), input.prizeValue ?? 0, input.maxEntries, input.startsAt, input.endsAt, id);
+    'UPDATE competitions SET name = ?, kind = ?, prize = ?, prize_details = ?, prize_value = ?, prize_type = ?, sport = ?, max_entries = ?, starts_at = ?, ends_at = ? WHERE id = ?',
+  ).run(
+    input.name.trim(),
+    input.kind,
+    input.prize.trim(),
+    input.prizeDetails.trim(),
+    input.prizeValue ?? 0,
+    input.prizeType ?? 'gift_card',
+    input.sport || null,
+    input.maxEntries,
+    input.startsAt,
+    input.endsAt,
+    id,
+  );
   return { ok: true, value: getCompetition(db, id)! };
 }
 
@@ -235,6 +268,8 @@ export interface BulkInput {
   prize: string;
   prizeDetails: string;
   prizeValue?: number;
+  prizeType?: PrizeType;
+  sport?: string | null;
   maxEntries: number;
   firstStart: number;
   lengthDays: number;
@@ -259,6 +294,8 @@ export function bulkCreate(db: DB, cfg: Config, input: BulkInput, now: number): 
       prize: input.prize,
       prizeDetails: input.prizeDetails,
       prizeValue: input.prizeValue,
+      prizeType: input.prizeType,
+      sport: input.sport,
       maxEntries: input.maxEntries,
       startsAt,
       endsAt,
@@ -270,4 +307,95 @@ export function bulkCreate(db: DB, cfg: Config, input: BulkInput, now: number): 
   }
   const made = tx(db, () => inputs.map((i) => createCompetition(db, i, now)));
   return { ok: true, value: made.map((r) => (r as { ok: true; value: Competition }).value) };
+}
+
+// ---- Browsing contests (the app's Contests screen) -------------------------
+
+/** Size buckets by entry cap. */
+export const SIZES = { small: [1, 100], medium: [101, 1000], large: [1001, Number.MAX_SAFE_INTEGER] } as const;
+/** Length buckets in days, [from, to). Wide enough that DST changes don't matter. */
+export const LENGTHS = { day: [0, 1.5], week: [1.5, 10], month: [10, 400] } as const;
+export const SORTS = ['soonest', 'popular', 'ending'] as const;
+
+export interface ContestFilter {
+  /** open = live or upcoming (the default); mine = ones the player joined that haven't ended. */
+  status?: 'open' | 'live' | 'upcoming' | 'mine';
+  sport?: string;
+  /** Contests open to every sport match any sport filter too. */
+  prizeType?: PrizeType;
+  size?: keyof typeof SIZES;
+  length?: keyof typeof LENGTHS;
+  /** Start time window (epoch ms). */
+  startFrom?: number;
+  startTo?: number;
+  sort?: (typeof SORTS)[number];
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * One page of contests matching the filter, filtered and sorted in SQL so it
+ * stays fast with many contests. Returns one extra row to know if there's more.
+ */
+export function browseContests(db: DB, f: ContestFilter, now: number, userId: string | null): { rows: Competition[]; more: boolean } {
+  const where: string[] = [];
+  const args: (string | number | null)[] = [];
+  const status = f.status ?? 'open';
+  if (status === 'live') {
+    where.push('c.starts_at <= ? AND c.ends_at > ?');
+    args.push(now, now);
+  } else if (status === 'upcoming') {
+    where.push('c.starts_at > ?');
+    args.push(now);
+  } else {
+    where.push('c.ends_at > ?');
+    args.push(now);
+  }
+  if (status === 'mine') {
+    where.push('EXISTS (SELECT 1 FROM competition_entries me WHERE me.competition_id = c.id AND me.user_id = ?)');
+    args.push(userId ?? '');
+  }
+  if (f.sport === 'any') {
+    // Only contests open to every sport.
+    where.push('c.sport IS NULL');
+  } else if (f.sport) {
+    // That sport's own contests plus the ones open to every sport.
+    where.push('(c.sport = ? OR c.sport IS NULL)');
+    args.push(f.sport);
+  }
+  if (f.prizeType) {
+    where.push('c.prize_type = ?');
+    args.push(f.prizeType);
+  }
+  if (f.size) {
+    const [lo, hi] = SIZES[f.size];
+    where.push('c.max_entries BETWEEN ? AND ?');
+    args.push(lo, hi);
+  }
+  if (f.length) {
+    const [lo, hi] = LENGTHS[f.length];
+    where.push('(c.ends_at - c.starts_at) >= ? AND (c.ends_at - c.starts_at) < ?');
+    args.push(Math.round(lo * DAY), Math.round(hi * DAY));
+  }
+  if (f.startFrom !== undefined) {
+    where.push('c.starts_at >= ?');
+    args.push(f.startFrom);
+  }
+  if (f.startTo !== undefined) {
+    where.push('c.starts_at < ?');
+    args.push(f.startTo);
+  }
+  const entries = '(SELECT COUNT(*) FROM competition_entries e WHERE e.competition_id = c.id)';
+  const order = {
+    // Live ones first, then by start time.
+    soonest: `(c.starts_at > ${Number(now)}), c.starts_at, c.ends_at, c.name`,
+    popular: `${entries} DESC, c.starts_at`,
+    ending: 'c.ends_at, c.starts_at',
+  }[f.sort ?? 'soonest'];
+  const limit = Math.min(Math.max(f.limit ?? 30, 1), 100);
+  const offset = Math.max(f.offset ?? 0, 0);
+  const rows = db
+    .prepare(`SELECT c.* FROM competitions c WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ? OFFSET ?`)
+    .all(...args, limit + 1, offset) as unknown as Competition[];
+  return { rows: rows.slice(0, limit), more: rows.length > limit };
 }

@@ -109,7 +109,7 @@ export default function ContestScreen() {
                       icon="play"
                       onPress={() => {
                         contests.setActive(c.id);
-                        router.push('/');
+                        router.push('/games');
                       }}
                     />
                   )}

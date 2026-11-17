@@ -93,7 +93,7 @@ export default function Points() {
             {!m.canEarnPoints && m.picksInPlay > 0 && m.balance < me.minPickPoints && (
               <GameButton title="Go to My Picks" variant="ghost" icon="list" onPress={() => router.push('/mypicks')} />
             )}
-            {m.balance >= me.minPickPoints && <GameButton title="Make picks" variant="go" icon="american-football" onPress={() => router.push('/')} />}
+            {m.balance >= me.minPickPoints && <GameButton title="Make picks" variant="go" icon="american-football" onPress={() => router.push('/games')} />}
             {message && <Text style={styles.msg}>{message}</Text>}
           </View>
 
@@ -106,7 +106,7 @@ export default function Points() {
 
           <Text style={styles.fine}>
             Points are free, stay inside each contest, and have no cash value. They can't be bought, sold or transferred.{' '}
-            <Text style={{ textDecorationLine: 'underline' }} onPress={() => router.push('/rules')}>
+            <Text style={{ textDecorationLine: 'underline' }} onPress={() => router.push('/howto')}>
               How it works
             </Text>
           </Text>
