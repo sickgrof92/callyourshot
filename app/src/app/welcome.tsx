@@ -23,6 +23,26 @@ const PROFILE_ERRORS: Record<string, string> = {
   bad_region: 'Choose your state or province.',
 };
 
+const FIELD_ERRORS: Record<string, string> = {
+  displayName: 'Names are 3-20 letters, numbers, dots or underscores (no spaces).',
+  email: 'Enter a valid email address.',
+  phone: PROFILE_ERRORS.bad_phone,
+  region: PROFILE_ERRORS.bad_region,
+  country: PROFILE_ERRORS.bad_region,
+  acceptedTerms: 'Tick the box to agree to the rules.',
+};
+
+/** Say what actually went wrong, so a server problem isn't shown as a bad name. */
+function profileError(err: ApiError): string {
+  if (PROFILE_ERRORS[err.code]) return PROFILE_ERRORS[err.code];
+  if (err.code === 'bad_request') {
+    const issues = (err.body.details ?? []) as { path?: (string | number)[] }[];
+    const field = issues.map((i) => String(i.path?.[i.path.length - 1] ?? '')).find((f) => FIELD_ERRORS[f]);
+    if (field) return FIELD_ERRORS[field];
+  }
+  return `Sign-up didn't work (${err.code}, ${err.status}). Try again, or make sure the app and server are both up to date.`;
+}
+
 const unreachable = `Couldn't reach the server at ${API_URL}. It may be waking up, so try again in a minute. If this address isn't your Render URL, see "Troubleshooting" in TESTING.md.`;
 
 export default function Welcome() {
@@ -91,7 +111,7 @@ export default function Welcome() {
         if (err.status === 401) {
           setPending(null);
           setError('Your sign-in expired. Please sign in again.');
-        } else setError(PROFILE_ERRORS[err.code] ?? 'Names are 3-20 letters, numbers, dots or underscores.');
+        } else setError(profileError(err));
       } else setError(unreachable);
     } finally {
       setBusy(null);
