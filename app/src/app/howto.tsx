@@ -23,7 +23,7 @@ const FAQ: [string, string][] = [
   ['When do picks lock?', 'At each game’s scheduled start time. A game can only be picked in a contest if it both starts and ends during the contest. Contests end early in the morning (around 5 AM Eastern), so late games still fit.'],
   ['When are picks graded?', 'Within about 5 minutes of the game ending.'],
   ['What if a game is postponed or cancelled?', 'Your pick is refunded as soon as the postponement or cancellation is announced, and the points go back to your balance in that contest.'],
-  ['How are ties broken?', 'Fewest refills used wins, then best win % (forfeits count as losses, pushes don’t count), then most winning picks. If players are still tied, they each win the prize (if more than 3 are still tied, more tiebreakers may be used).'],
+  ['How are ties broken?', '1) Fewest refills used\n2) Best overall win%\n3) Most total winning picks\n4) If players are still tied, all tied players will receive the prize (unless there are more than 3 players tied, in which case additional tiebreakers are decided at the discretion of CallYourShot)'],
   ['How do I get my prize?', 'If you win, open the contest and tap Claim your prize. We ask for your legal name, mailing address and date of birth to verify you and send it. Canadian winners also answer a short math question.'],
   ['Who can play?', 'Residents of the US and Canada, except Quebec. Winners must be at least the age of majority where they live.'],
   ['Can other players see my info?', 'They see your display name and stats only. Your email, phone number and location are never shown.'],
