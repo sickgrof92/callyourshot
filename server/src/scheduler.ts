@@ -17,30 +17,25 @@ import type { BudgetStatus } from './budget.ts';
 import { currentRemaining, getBudgetStatus, recordApiCall } from './budget.ts';
 import type { Config } from './config.ts';
 import type { DB } from './db.ts';
-import { gradeEvent, voidStalePicks } from './grading.ts';
+import { gradeEvent, voidPostponed, voidStalePicks } from './grading.ts';
 import { applyScores, ingestOdds, upsertEvents } from './lines.ts';
 import { OddsApiError, oddsCallCost, SCORES_CALL_COST, type ApiUsage, type OddsApi } from './oddsApi.ts';
+import { gameLength } from './gameLength.ts';
 import { DAY, HOUR, sportsDay } from './time.ts';
 
 const MIN = 60_000;
 export const NEAR_WINDOW = 3 * HOUR;
 export const NEAR_INTERVAL = 30 * MIN;
 export const FAR_INTERVAL = 4 * HOUR;
+/** Default gap between score checks once a game with pending picks should be over. Set SCORES_INTERVAL_MINUTES=5 on a paid plan. */
 export const SCORES_INTERVAL = 30 * MIN;
 export const RESERVE_SCORES_INTERVAL = 2 * HOUR;
-export const EVENTS_INTERVAL = 6 * HOUR;
+// The events listing is free, so check it often: it is how postponed and
+// cancelled games are spotted (and their picks refunded) quickly.
+export const EVENTS_INTERVAL = 30 * MIN;
 export const MAX_PRESSURE = 8;
 
-/** Rough real-world game lengths, used to know when a final score could exist. */
-export const GAME_LENGTH: Record<string, number> = {
-  americanfootball_nfl: 3 * HOUR + 10 * MIN,
-  americanfootball_ncaaf: 3 * HOUR + 20 * MIN,
-  basketball_nba: 2 * HOUR + 20 * MIN,
-  basketball_ncaab: 2 * HOUR,
-  icehockey_nhl: 2 * HOUR + 30 * MIN,
-};
-const DEFAULT_GAME_LENGTH = 3 * HOUR;
-export const gameLength = (sport: string) => GAME_LENGTH[sport] ?? DEFAULT_GAME_LENGTH;
+export { GAME_LENGTH, gameLength } from './gameLength.ts';
 
 /**
  * When the next line refresh is due, given the last refresh and the next game to start.
@@ -72,14 +67,14 @@ export function estimateOddsCalls(startsToday: number[], lastAt: number | null, 
 }
 
 /** Score checks still expected today for games that have pending picks. */
-export function estimateScoresCalls(pendingStarts: number[], sport: string, now: number): number {
+export function estimateScoresCalls(pendingStarts: number[], sport: string, now: number, interval = SCORES_INTERVAL): number {
   if (pendingStarts.length === 0) return 0;
   const len = gameLength(sport);
   const firstEnd = Math.min(...pendingStarts) + len;
   const lastEnd = Math.max(...pendingStarts) + len + HOUR;
   const from = Math.max(now, firstEnd);
   if (from > lastEnd) return 1;
-  return Math.ceil((lastEnd - from) / SCORES_INTERVAL) + 1;
+  return Math.ceil((lastEnd - from) / interval) + 1;
 }
 
 export interface SportPlan {
@@ -118,7 +113,7 @@ export function decide(plans: SportPlan[], budget: BudgetStatus, now: number, cf
   for (const p of plans) {
     estimatedCost += estimateOddsCalls(p.upcomingToday, p.lastOddsAt, now) * oddsCost;
     const ready = p.pendingStarts.filter((s) => s > now - DAY);
-    estimatedCost += estimateScoresCalls(ready, p.sport, now) * SCORES_CALL_COST;
+    estimatedCost += estimateScoresCalls(ready, p.sport, now, cfg.scoresIntervalMs) * SCORES_CALL_COST;
   }
   const dailyPressure = budget.leftToday > 0 ? estimatedCost / budget.leftToday : MAX_PRESSURE;
   const pressure = Math.min(MAX_PRESSURE, Math.max(1, dailyPressure) * budget.paceFactor);
@@ -137,7 +132,7 @@ export function decide(plans: SportPlan[], budget: BudgetStatus, now: number, cf
 
   // Score checks keep running out of the reserve (slowly) so picks always get graded.
   const slowScores = budget.mode === 'reserve' || budget.leftToday < SCORES_CALL_COST;
-  const scoresInterval = slowScores ? RESERVE_SCORES_INTERVAL : Math.min(RESERVE_SCORES_INTERVAL, SCORES_INTERVAL * pressure);
+  const scoresInterval = slowScores ? RESERVE_SCORES_INTERVAL : Math.min(RESERVE_SCORES_INTERVAL, cfg.scoresIntervalMs * pressure);
   for (const p of plans) {
     const finished = p.pendingStarts.filter((s) => s + gameLength(p.sport) <= now);
     if (finished.length === 0) continue;
@@ -221,7 +216,7 @@ function decideLean(plans: SportPlan[], budget: BudgetStatus, now: number, cfg: 
 
 export function buildPlans(db: DB, cfg: Config, now: number): SportPlan[] {
   const day = sportsDay(now, cfg.timeZone, cfg.dayStartHour);
-  const startsStmt = db.prepare('SELECT commence_time AS t FROM events WHERE sport = ? AND commence_time >= ? AND commence_time < ?');
+  const startsStmt = db.prepare('SELECT commence_time AS t FROM events WHERE sport = ? AND cancelled = 0 AND commence_time >= ? AND commence_time < ?');
   const pendingStmt = db.prepare(
     `SELECT DISTINCT e.commence_time AS t FROM picks p JOIN events e ON e.id = p.event_id
      WHERE p.status = 'pending' AND e.completed = 0 AND e.sport = ?`,
@@ -266,7 +261,7 @@ export interface TickResult {
 /** One scheduler pass. Safe to call every minute; it only spends credits when something is due. */
 export async function tick(db: DB, cfg: Config, api: OddsApi, now: number, log?: Logger): Promise<TickResult> {
   const errors: string[] = [];
-  const voided = voidStalePicks(db, now);
+  let voided = voidStalePicks(db, now);
   const budget = getBudgetStatus(db, cfg, now);
   const decision = decide(buildPlans(db, cfg, now), budget, now, cfg);
 
@@ -291,7 +286,10 @@ export async function tick(db: DB, cfg: Config, api: OddsApi, now: number, log?:
 
   for (const sport of decision.events) {
     const data = await call('events', sport, 0, () => api.getEvents(sport));
-    if (data) upsertEvents(db, data, now);
+    if (data) {
+      voided += voidPostponed(db, sport, data, now);
+      upsertEvents(db, data, now);
+    }
     setState(db, sport, 'last_events_at', now);
   }
 

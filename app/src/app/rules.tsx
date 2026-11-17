@@ -16,7 +16,7 @@ const RULES: [string, string][] = [
   ],
   [
     'Making picks',
-    "You can use your points to pick the winner, the spread, or the over/under total of real games that start before the contest is over. To make a pick, you watch a short ad before confirming it. You can make picks on a game until it officially starts. Once you confirm a pick, it can't be changed.",
+    "You can use your points to pick the winner, the spread, or the over/under total of real games that both start and end during the contest. To make a pick, you watch a short ad before confirming it. You can make picks on a game until it officially starts. Once you confirm a pick, it can't be changed.",
   ],
   [
     'Forfeiting',

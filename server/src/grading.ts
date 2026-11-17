@@ -2,7 +2,7 @@
 
 import { tx, type DB } from './db.ts';
 import { postLedger, winPayout } from './points.ts';
-import { DAY } from './time.ts';
+import { DAY, HOUR } from './time.ts';
 
 export type Outcome = 'won' | 'lost' | 'push';
 
@@ -98,5 +98,50 @@ export function voidStalePicks(db: DB, now: number): number {
       .all(now - VOID_AFTER_MS) as unknown as PendingPick[];
     for (const p of picks) settle(db, p, 'void', now);
     return picks.length;
+  });
+}
+
+/** A start time moving by this much or more means the game was postponed (or moved), not just tweaked. */
+export const RESCHEDULE_MS = 2 * HOUR;
+
+/**
+ * Refund picks as soon as the schedule shows a game was postponed or cancelled,
+ * instead of waiting for VOID_AFTER_MS. Call with a sport's fresh schedule
+ * (the free events listing) *before* saving it:
+ *  - a game whose start time moved by RESCHEDULE_MS or more was postponed:
+ *    its pending picks are refunded (the game stays listed at its new time);
+ *  - a game that hasn't started yet and is gone from the schedule was
+ *    cancelled: its pending picks are refunded and it is hidden from Games.
+ * Returns how many picks were refunded.
+ */
+export function voidPostponed(db: DB, sport: string, feed: { id: string; commence_time: string }[], now: number): number {
+  return tx(db, () => {
+    const known = db.prepare('SELECT id, commence_time FROM events WHERE sport = ? AND completed = 0 AND cancelled = 0').all(sport) as {
+      id: string;
+      commence_time: number;
+    }[];
+    const inFeed = new Map(feed.map((e) => [e.id, Date.parse(e.commence_time)]));
+    const pendingStmt = db.prepare(
+      `SELECT p.id, p.user_id, p.competition_id, p.market, p.selection, p.point, p.price, p.stake, e.commence_time
+       FROM picks p JOIN events e ON e.id = p.event_id WHERE p.event_id = ? AND p.status = 'pending'`,
+    );
+    let n = 0;
+    for (const ev of known) {
+      const newStart = inFeed.get(ev.id);
+      let off = false;
+      if (newStart === undefined) {
+        // An empty schedule is more likely a glitch than every game being cancelled.
+        if (feed.length === 0 || ev.commence_time <= now) continue;
+        db.prepare('UPDATE events SET cancelled = 1, updated_at = ? WHERE id = ?').run(now, ev.id);
+        off = true;
+      } else if (Number.isFinite(newStart) && Math.abs(newStart - ev.commence_time) >= RESCHEDULE_MS) {
+        off = true;
+      }
+      if (!off) continue;
+      const picks = pendingStmt.all(ev.id) as unknown as PendingPick[];
+      for (const p of picks) settle(db, p, 'void', now);
+      n += picks.length;
+    }
+    return n;
   });
 }

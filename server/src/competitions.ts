@@ -244,9 +244,12 @@ export const KIND_LABEL: Record<Kind, string> = { daily: 'Daily', weekly: 'Weekl
 export function presets(cfg: Config, now: number) {
   const tz = cfg.timeZone;
   const p = zonedParts(now, tz);
-  const tomorrow = zonedToEpoch(p.year, p.month, p.day + 1, 0, tz);
+  // Contests run from the start of one sports day (5am ET by default) to the
+  // start of another, so late West Coast games fit inside them.
+  const h = cfg.dayStartHour;
+  const tomorrow = zonedToEpoch(p.year, p.month, p.day + 1, h, tz);
   const daysToMonday = ((8 - p.weekday) % 7) || 7;
-  const nextMonday = zonedToEpoch(p.year, p.month, p.day + daysToMonday, 0, tz);
+  const nextMonday = zonedToEpoch(p.year, p.month, p.day + daysToMonday, h, tz);
   const one = (kind: Kind, start: number, lengthDays: number) => ({
     kind,
     lengthDays,

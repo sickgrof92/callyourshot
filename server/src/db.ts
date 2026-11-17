@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS events (
   away_team      TEXT NOT NULL,
   commence_time  INTEGER NOT NULL,
   completed      INTEGER NOT NULL DEFAULT 0,
+  -- 1 once the game drops out of the schedule before starting (cancelled).
+  cancelled      INTEGER NOT NULL DEFAULT 0,
   home_score     INTEGER,
   away_score     INTEGER,
   lines_updated_at INTEGER,
@@ -234,6 +236,7 @@ function migrate(db: DB): void {
     }
     if (!comp.includes('sport')) db.exec('ALTER TABLE competitions ADD COLUMN sport TEXT');
     if (!colsOf('users').includes('birth_date')) db.exec('ALTER TABLE users ADD COLUMN birth_date TEXT');
+    if (!colsOf('events').includes('cancelled')) db.exec('ALTER TABLE events ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0');
     return;
   }
   db.exec('PRAGMA foreign_keys = OFF');

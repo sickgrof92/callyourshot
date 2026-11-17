@@ -18,6 +18,8 @@ export interface Game {
   homeTeam: string;
   awayTeam: string;
   startsAt: string;
+  /** When the game should be over (with room for delays). It must be before the contest ends to be picked there. */
+  expectedEndsAt: string;
   locked: boolean;
   linesUpdatedAt: string | null;
   lines: Partial<Record<Market, Partial<Record<Selection, LineQuote>>>>;

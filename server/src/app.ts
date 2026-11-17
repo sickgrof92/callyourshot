@@ -1,3 +1,4 @@
+import { expectedEnd } from './gameLength.ts';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
@@ -285,7 +286,7 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
     const events = db
       .prepare(
         `SELECT id, sport, home_team, away_team, commence_time, lines_updated_at FROM events
-         WHERE sport = ? AND completed = 0 AND commence_time >= ? AND commence_time < ?
+         WHERE sport = ? AND completed = 0 AND cancelled = 0 AND commence_time >= ? AND commence_time < ?
          ORDER BY commence_time, id`,
       )
       .all(q.sport, now - 4 * HOUR, now + 8 * DAY) as {
@@ -315,6 +316,7 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
           awayTeam: e.away_team,
           startsAt: new Date(e.commence_time).toISOString(),
           locked: now >= e.commence_time,
+          expectedEndsAt: new Date(expectedEnd(e.sport, e.commence_time)).toISOString(),
           linesUpdatedAt: e.lines_updated_at ? new Date(e.lines_updated_at).toISOString() : null,
           lines,
         };

@@ -73,10 +73,10 @@ describe('contests (admin)', () => {
   it('offers next daily, weekly and monthly windows', async () => {
     const { app } = setup(et(2026, 11, 20, 21)); // Friday night
     const body = (await app.inject({ method: 'GET', url: '/admin/competitions', headers: ADMIN })).json();
-    expect(body.presets.daily).toMatchObject({ startsAt: iso(et(2026, 11, 21, 0)), endsAt: iso(et(2026, 11, 22, 0)) });
+    expect(body.presets.daily).toMatchObject({ startsAt: iso(et(2026, 11, 21, 5)), endsAt: iso(et(2026, 11, 22, 5)) });
     // Weekly: 7 days from tomorrow. Monthly: 30 days from next Monday.
-    expect(body.presets.weekly).toMatchObject({ lengthDays: 7, startsAt: iso(et(2026, 11, 21, 0)), endsAt: iso(et(2026, 11, 28, 0)) });
-    expect(body.presets.monthly).toMatchObject({ lengthDays: 30, startsAt: iso(et(2026, 11, 23, 0)), endsAt: iso(et(2026, 12, 23, 0)) });
+    expect(body.presets.weekly).toMatchObject({ lengthDays: 7, startsAt: iso(et(2026, 11, 21, 5)), endsAt: iso(et(2026, 11, 28, 5)) });
+    expect(body.presets.monthly).toMatchObject({ lengthDays: 30, startsAt: iso(et(2026, 11, 23, 5)), endsAt: iso(et(2026, 12, 23, 5)) });
   });
 
   it('bulk-creates a 7-day contest starting every day, and a 30-day one every Monday', async () => {
