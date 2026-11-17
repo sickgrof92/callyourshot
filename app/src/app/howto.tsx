@@ -9,15 +9,15 @@ import { colors, glow, space } from '../lib/theme';
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const STEPS: { icon: IconName; color: string; title: string; body: string }[] = [
-  { icon: 'trophy', color: colors.accent, title: 'Join a contest', body: 'Contests are free. Pick daily, weekly or monthly ones, and join as many as you like. Everyone starts each contest at 0 points.' },
-  { icon: 'flash', color: colors.neon, title: 'Get points', body: 'On the Points tab, watch a short video for 10 points in the contest you are playing.' },
-  { icon: 'american-football', color: colors.pink, title: 'Make picks', body: 'On Games, tap a winner, spread or total. Watch one short ad, then confirm. Winning picks pay points back.' },
-  { icon: 'podium', color: colors.purple, title: 'Climb the board', body: 'The player with the most points when the contest ends wins the prize shown on the contest.' },
+  { icon: 'trophy', color: colors.accent, title: 'Join a contest', body: 'Pick the contest length of your choice, and join as many contests as you’d like. All players start with only the 10 points awarded at the beginning of each contest.' },
+  { icon: 'flash', color: colors.neon, title: 'Get points', body: 'In the Points tab, watch a short video to be awarded your 10 points for the contest you are playing.' },
+  { icon: 'american-football', color: colors.pink, title: 'Make picks', body: 'Search through the available games to make your picks on spreads, winners, or over/unders. After choosing your pick, watch a short ad to be able to confirm it. Winning picks reward points based on how many points you put on the pick and its line. Losing picks lose all the points put on them.' },
+  { icon: 'podium', color: colors.purple, title: 'Climb the board', body: 'The player with the most points at the end of the contest wins the prize(s) listed for that contest.' },
 ];
 
 const FAQ: [string, string][] = [
   ['Does it cost anything?', 'No. Contests are free to enter, and there is nothing to buy. Points have no cash value and can’t be bought, sold or transferred.'],
-  ['What happens when I run out of points?', 'When you have no points and no picks waiting to be graded in a contest, you can watch a video for 10 more. You get 5 refills a day in each contest you join.'],
+  ['What happens when I run out of points?', 'When you have no points and no picks waiting to be graded in a contest, you can watch a video for 10 more. You get 5 refills per day in each contest you join.'],
   ['Why can’t I refill right now?', 'Refills are only for when you’re out. If you have picks in play, wait for them to be graded, or forfeit one after its game starts to get back to 0 sooner.'],
   ['What does forfeit do?', 'Once a game has started, you can give up a pick by watching an ad. It counts as a loss and the points are gone, but it lets you refill sooner.'],
   ['When do picks lock?', 'At each game’s scheduled start time. Picks only count in a contest if the game starts before the contest ends.'],

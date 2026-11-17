@@ -2,6 +2,7 @@ import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Celebration, type CelebrationInfo } from '../../components/Celebration';
+import { CollectPoints } from '../../components/CollectPoints';
 import { GameButton } from '../../components/GameButton';
 import { Meter } from '../../components/Meter';
 import { RankBadge } from '../../components/RankBadge';
@@ -11,6 +12,7 @@ import { useContests } from '../../lib/contests';
 import { contestClock, contestDates } from '../../lib/format';
 import { warn } from '../../lib/haptics';
 import { useSession } from '../../lib/session';
+import { useAd } from '../../lib/useAd';
 import { colors, glow, kindColor, space } from '../../lib/theme';
 
 export default function ContestScreen() {
@@ -22,6 +24,9 @@ export default function ContestScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [party, setParty] = useState<CelebrationInfo | null>(null);
   const contests = useContests();
+  const { watch, adModal } = useAd();
+  const [popupClosed, setPopupClosed] = useState(false);
+  const [watching, setWatching] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -60,6 +65,30 @@ export default function ContestScreen() {
   }
 
   const c = data?.competition;
+  // Pop up the points video when the player can collect points here: right after joining, or when out.
+  const canCollect = !!c && c.joined && c.status === 'live' && !!c.mine?.canEarnPoints;
+  const refillsLeft = c?.mine ? Math.max(c.mine.pointsAdsPerDay - c.mine.pointsAdsToday, 0) : 0;
+
+  async function collect() {
+    if (!c) return;
+    setWatching(true);
+    try {
+      contests.setActive(c.id);
+      const done = await watch('points', c.id);
+      if (done) {
+        setPopupClosed(true);
+        setParty({ title: `+${me?.adRewardPoints ?? 10} POINTS!`, subtitle: c.name, color: colors.accent });
+        await contests.refresh();
+        await load();
+      }
+    } catch {
+      warn();
+      setMessage("Couldn't play the video. Try again in a moment.");
+      setPopupClosed(true);
+    } finally {
+      setWatching(false);
+    }
+  }
   const color = c ? kindColor[c.kind] : colors.neon;
   const full = c ? c.entries >= c.maxEntries : false;
 
@@ -117,6 +146,9 @@ export default function ContestScreen() {
               ) : c.status !== 'ended' && !c.joined ? (
                 <GameButton title={full ? 'Full' : 'Join free'} variant="go" size="lg" icon="flash" disabled={full} busy={busy} heavy onPress={join} />
               ) : null}
+              {canCollect && popupClosed && (
+                <GameButton title={`Watch video for ${me?.adRewardPoints ?? 10} points`} variant="primary" icon="play-circle" busy={watching} onPress={collect} />
+              )}
               {message && <Text style={styles.msg}>{message}</Text>}
               <Text style={styles.section}>LEADERBOARD</Text>
             </View>
@@ -140,6 +172,16 @@ export default function ContestScreen() {
           c ? <Text style={styles.fine}>Score = your points in this contest, counting points on picks still in play. Everyone starts at 0. Ties go to fewest refills used, then best win %, then most winning picks. Still tied? Everyone tied for first wins the full prize. Tap a name to see their stats.</Text> : undefined
         }
       />
+      <CollectPoints
+        visible={canCollect && !popupClosed && !party}
+        first={(c?.mine?.pointsAdsToday ?? 0) === 0 && (c?.mine?.picksInPlay ?? 0) === 0}
+        points={me?.adRewardPoints ?? 10}
+        refillsLeft={refillsLeft}
+        busy={watching}
+        onWatch={collect}
+        onClose={() => setPopupClosed(true)}
+      />
+      {adModal}
       <Celebration info={party} onDone={() => setParty(null)} />
     </View>
   );
