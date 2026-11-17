@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AD_PURPOSES, adEligibility, createAdSession, fetchAdmobKeys, grantAdReward, verifyAdmobSsv } from './ads.ts';
+import { deleteAccount } from './account.ts';
 import { emailKey, IdentityVerifier, normalizePhone, PROVIDERS } from './auth.ts';
 import { CLAIM_STATUSES, claimInfo, getClaim, listClaims, setClaimStatus, submitClaim } from './claims.ts';
 import { checkRegion, COUNTRIES } from './eligibility.ts';
@@ -218,6 +219,13 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
       return reply.code(409).send({ error: 'taken' }); // lost a race with another sign-up
     }
     return { token, user: { id, displayName: p.displayName } };
+  });
+
+  // Delete my account. The app asks the player to type DELETE first.
+  app.delete('/me', async (req) => {
+    const u = requireUser(req);
+    z.object({ confirm: z.literal('DELETE') }).parse(req.body ?? {});
+    return { deleted: true, ...deleteAccount(db, u.id) };
   });
 
   app.get('/me', async (req) => {

@@ -230,6 +230,8 @@ export const api = {
       .join('&');
     return request<ContestPage>(`/competitions${qs ? `?${qs}` : ''}`, { token });
   },
+  deleteAccount: (token: string) =>
+    request<{ deleted: true; kept: 'nothing' | 'paid_prize_records' }>('/me', { method: 'DELETE', body: { confirm: 'DELETE' }, token }),
   contact: (token: string, topic: ContactTopic, body: string) => request<{ sent: true }>('/contact', { method: 'POST', body: { topic, body }, token }),
   contest: (id: string, token: string | null) => request<ContestDetail>(`/competitions/${encodeURIComponent(id)}`, { token }),
   notifyPrefs: (token: string) => request<NotifyPrefs>('/me/notifications', { token }),

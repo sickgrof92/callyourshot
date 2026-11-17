@@ -29,6 +29,7 @@ export default function RootLayout() {
         <Stack.Screen name="rules" options={{ title: 'Rules' }} />
         <Stack.Screen name="howto" options={{ title: 'How to play' }} />
         <Stack.Screen name="contact" options={{ title: 'Contact us' }} />
+        <Stack.Screen name="delete-account" options={{ title: 'Delete account' }} />
       </Stack>
       </ContestsProvider>
     </SessionProvider>

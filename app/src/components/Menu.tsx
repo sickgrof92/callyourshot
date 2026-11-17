@@ -80,6 +80,10 @@ function MenuPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
               </Pressable>
             ))}
           </ScrollView>
+          <Pressable onPress={go(() => router.push('/delete-account'))} style={({ pressed }) => [styles.row, pressed && styles.pressed]} accessibilityRole="button">
+            <Ionicons name="trash-outline" size={22} color={colors.loss} />
+            <Text style={[styles.label, { color: colors.loss }]}>Delete my account</Text>
+          </Pressable>
           <Pressable
             onPress={go(async () => {
               await signOut();

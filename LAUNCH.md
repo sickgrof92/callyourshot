@@ -32,7 +32,7 @@ The server warns in its log at startup if sign-in or ads are still stubbed, or `
 
 1. In your Apple Developer account, open **Certificates, Identifiers & Profiles** > **Identifiers**, select the app id `com.callyourshot.app` (create it if needed), and tick **Sign in with Apple**.
 2. Nothing else is needed for the app: `app.json` already has `usesAppleSignIn` and the plugin. EAS Build picks up the capability.
-3. App Store rule: apps with sign-in must let players delete their account from inside the app. Add that before submitting (ask me when you're ready).
+3. App Store rule: apps with sign-in must let players delete their account from inside the app. That's in the menu (Delete my account). Mention in the privacy policy that paid prize records are kept for tax purposes.
 
 ## 4. Sign in with Google
 

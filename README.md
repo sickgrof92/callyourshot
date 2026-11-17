@@ -39,7 +39,9 @@ These are enforced in code, not just policy:
 
 **Browsing contests.** Contests is the home screen. Players filter by sport, start time, length, size (max players) and prize type, and sort by starting soonest, most players or ending soonest. The server filters, sorts and pages the list (`GET /competitions`, 20 at a time), so it stays quick with many contests. Picking a sport also shows contests open to every sport. Filters are remembered on the phone.
 
-**Menu.** The ☰ button on every tab opens: Contests, My profile & stats, My picks, Notification settings, How to play & FAQ, Rules, Privacy policy, Contact us and Sign out.
+**Menu.** The ☰ button on every tab opens: Contests, My profile & stats, My picks, Notification settings, How to play & FAQ, Rules, Privacy policy, Contact us, Delete my account and Sign out.
+
+**Deleting an account** (menu > Delete my account, then type DELETE) removes the player's sign-in, contact details, picks, points, contest entries, profile, messages and any unpaid prize claim (`server/src/account.ts`). A prize that was already paid keeps its claim record for tax purposes; the account row behind it is cleared of everything personal. The privacy policy should say this.
 
 **Profiles.** Tapping a name on a board shows that player's record (W-L-T, forfeits as losses and pushes as ties), win %, longest win streak, reloads and contests won. Never their email, phone or location.
 
@@ -139,5 +141,4 @@ The page also shows Odds API credits left. Too many wrong passwords lock the adm
 ## Not in v1
 
 - Phone verification by text (structured for it, not turned on).
-- In-app account deletion (needed for the App Store when sign-in is live; see LAUNCH.md).
 - AppLovin MAX (AdMob is wired up; MAX would follow the same session + callback pattern).
