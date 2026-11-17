@@ -22,7 +22,7 @@ const FAQ: [string, string][] = [
   ['What does forfeit do?', 'Once a game has started, you can give up a pick by watching an ad. It counts as a loss and the points are gone, but it lets you refill sooner.'],
   ['When do picks lock?', 'At each game’s scheduled start time. Picks only count in a contest if the game starts before the contest ends.'],
   ['When are picks graded?', 'A few hours after games finish. Games that are postponed or cancelled and have no result after 3 days are refunded.'],
-  ['How are ties broken?', 'Fewest refills used wins, then best win % (forfeits count as losses, pushes don’t count), then most winning picks. If players are still tied, they all win the full prize.'],
+  ['How are ties broken?', 'Fewest refills used wins, then best win % (forfeits count as losses, pushes don’t count), then most winning picks. If players are still tied, they each win the prize (if more than 3 are still tied, more tiebreakers may be used).'],
   ['How do I get my prize?', 'If you win, open the contest and tap Claim your prize. We ask for your legal name, mailing address and date of birth to verify you and send it. Canadian winners also answer a short math question.'],
   ['Who can play?', 'Residents of the US and Canada, except Quebec. Winners must be at least the age of majority where they live.'],
   ['Can other players see my info?', 'They see your display name and stats only. Your email, phone number and location are never shown.'],
