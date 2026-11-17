@@ -2,6 +2,7 @@ import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Celebration, type CelebrationInfo } from '../../components/Celebration';
+import { ClaimPrizePopup } from '../../components/ClaimPrizePopup';
 import { CollectPoints } from '../../components/CollectPoints';
 import { GameButton } from '../../components/GameButton';
 import { Meter } from '../../components/Meter';
@@ -117,7 +118,7 @@ export default function ContestScreen() {
                 {c.status === 'ended' && <Text style={styles.winner}>{c.winner ? `🏆 Winner: ${c.winner}` : 'Final results coming soon'}</Text>}
               </View>
               {c.claim === 'pending' && (
-                <GameButton title="Claim your prize" variant="primary" size="lg" icon="gift" heavy onPress={() => router.push(`/claim/${c.id}`)} />
+                <GameButton title="Claim my prize" variant="primary" size="lg" icon="gift" heavy onPress={() => router.push(`/claim/${c.id}`)} />
               )}
               {c.claim && c.claim !== 'pending' && (
                 <GameButton title={`Prize claim: ${c.claim}`} variant="ghost" size="sm" icon="gift" onPress={() => router.push(`/claim/${c.id}`)} />
@@ -169,7 +170,7 @@ export default function ContestScreen() {
         }}
         ListEmptyComponent={c ? <Text style={styles.empty}>No players yet. Join and be first on the board.</Text> : undefined}
         ListFooterComponent={
-          c ? <Text style={styles.fine}>Score = your points in this contest, counting points on picks still in play. Everyone starts at 0. Ties go to fewest refills used, then best win %, then most winning picks. Still tied? Everyone tied for first wins the full prize. Tap a name to see their stats.</Text> : undefined
+          c ? <Text style={styles.fine}>Score = your points in this contest, counting points on picks still in play. Ties go to fewest refills used, then best win %, then most winning picks. Still tied? Everyone tied for first wins the prize (with more than 3 tied, more tiebreakers may be used). Tap a name to see their stats.</Text> : undefined
         }
       />
       <CollectPoints
@@ -182,6 +183,7 @@ export default function ContestScreen() {
         onClose={() => setPopupClosed(true)}
       />
       {adModal}
+      <ClaimPrizePopup contest={c && c.claim === 'pending' && !party ? c : null} />
       <Celebration info={party} onDone={() => setParty(null)} />
     </View>
   );

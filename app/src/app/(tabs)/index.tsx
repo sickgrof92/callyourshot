@@ -7,6 +7,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Celebration, type CelebrationInfo } from '../../components/Celebration';
+import { ClaimPrizePopup } from '../../components/ClaimPrizePopup';
 import { ContestCard } from '../../components/ContestCard';
 import { FilterIcon, FilterSheet } from '../../components/FilterSheet';
 import { GameButton } from '../../components/GameButton';
@@ -217,6 +218,7 @@ export default function Contests() {
         }
       />
       <FilterSheet open={sheet} value={filters} sports={sports} onApply={applyFilters} onClose={() => setSheet(false)} />
+      <ClaimPrizePopup contest={party ? null : (toClaim[0] ?? null)} />
       <Celebration info={party} onDone={() => setParty(null)} />
     </View>
   );

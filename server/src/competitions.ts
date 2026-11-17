@@ -46,7 +46,7 @@ export interface CompetitionInput {
   kind: Kind;
   prize: string;
   prizeDetails: string;
-  /** Retail value in dollars (0 if unknown). US prizes of $600+ ask the winner for a tax id. */
+  /** Retail value in dollars (0 if unknown). US winners whose prizes reach $2,000 in a year are asked for a tax id. */
   prizeValue?: number;
   /** Gift card (default) or a physical prize. */
   prizeType?: PrizeType;

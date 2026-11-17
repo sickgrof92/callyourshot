@@ -24,7 +24,7 @@ const FAQ: [string, string][] = [
   ['When are picks graded?', 'Within about 5 minutes of the game ending.'],
   ['What if a game is postponed or cancelled?', 'Your pick is refunded as soon as the postponement or cancellation is announced, and the points go back to your balance in that contest.'],
   ['How are ties broken?', '1) Fewest refills used\n2) Best overall win%\n3) Most total winning picks\n4) If players are still tied, all tied players will receive the prize (unless there are more than 3 players tied, in which case additional tiebreakers are decided at the discretion of CallYourShot)'],
-  ['How do I get my prize?', 'If you win, open the contest and tap Claim your prize. We ask for your legal name, mailing address and date of birth to verify you and send it. Canadian winners also answer a short math question.'],
+  ['How do I get my prize?', 'If you win, simply open that contest and tap Claim my prize. We ask only for the information we are required to obtain in order to provide your prize: your legal name, mailing address and date of birth. In accordance with Canadian law, winners residing in Canada will also have to answer a short math question. US winners whose prizes total $2,000 or more in value in a calendar year will need to provide their Social Security number or tax ID, and will receive the legally required tax forms.'],
   ['Who can play?', 'Residents of the US and Canada, except Quebec. Winners must be at least the age of majority where they live.'],
   ['Can other players see my info?', 'They see your display name and stats only. Your email, phone number and location are never shown.'],
 ];

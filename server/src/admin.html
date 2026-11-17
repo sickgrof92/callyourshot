@@ -88,7 +88,7 @@
           <select id="ptype"><option value="gift_card">Gift card</option><option value="physical">Physical prize</option></select></div>
         <div><label for="sport">Sport</label><select id="sport" class="sportSel"></select></div>
       </div>
-      <div class="muted" style="margin-top:6px">Prize value is used to ask US winners for a tax ID when it is $600 or more (for a 1099).</div>
+      <div class="muted" style="margin-top:6px">Prize value is used to ask US winners for a tax ID once their prizes add up to $2,000 or more in a year (for a 1099-MISC).</div>
       <div class="row">
         <div><label for="start">Starts</label><input id="start" type="datetime-local"></div>
         <div><label for="end">Ends</label><input id="end" type="datetime-local"></div>
@@ -351,9 +351,10 @@
       <span class="badge ${badge}">${CLAIM_LABEL[c.status] || c.status}</span>
       <h3>${esc(c.contest)}</h3>
       <div class="prize">🏆 ${esc(c.prize)}${c.prize_value ? ` · $${c.prize_value}` : ''}</div>
+      <div class="muted">Prizes this year: $${Number(c.yearTotal || 0).toLocaleString()}${c.needsTaxForm ? ' · <b>1099-MISC needed</b>' : ''}</div>
       ${flagHtml}
       <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd style="margin:0">${v}</dd>`).join('')}</dl>
-      ${c.status === 'pending' ? '<div class="muted">The winner fills in their details in the app (contest screen, Claim your prize).</div>' : ''}
+      ${c.status === 'pending' ? '<div class="muted">The winner fills in their details in the app (contest screen, Claim my prize).</div>' : ''}
       <div id="cmsg-${esc(c.competition_id)}-${esc(c.user_id)}"></div>
       <div class="actions">${actions.join('')}</div>
     </div>`;
