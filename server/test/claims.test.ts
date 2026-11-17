@@ -16,7 +16,7 @@ function setup() {
   const app = buildApp({ db, cfg, clock: () => clock });
   const r = createCompetition(
     db,
-    { name: 'Weekly', kind: 'weekly', prize: '$1,000 cash', prizeValue: 1000, prizeDetails: '', maxEntries: 100, startsAt: et(2026, 11, 21, 0), endsAt: et(2026, 11, 28, 0) },
+    { name: 'Weekly', kind: 'weekly', prize: '$2,000 cash', prizeValue: 2000, prizeDetails: '', maxEntries: 100, startsAt: et(2026, 11, 21, 0), endsAt: et(2026, 11, 28, 0) },
     et(2026, 11, 20, 0),
   );
   if (!r.ok) throw new Error(r.error);
@@ -103,7 +103,7 @@ describe('prize claims', () => {
     ...over,
   });
 
-  it('collects the winner form encrypted, asks for a tax id on a $600+ US prize, and the admin moves it to verified and paid', async () => {
+  it('collects the winner form encrypted, asks for a tax id when US prizes reach $2,000 in a year, and the admin moves it to verified and paid', async () => {
     const { app, db, cfg, cid, uid, token, claim } = await win({ country: 'US', region: 'NY' });
     const info = (await app.inject({ method: 'GET', url: `/competitions/${cid}/claim`, headers: auth(token) })).json();
     expect(info).toMatchObject({ status: 'pending', needsTaxId: true, skillQuestion: null });
@@ -120,7 +120,7 @@ describe('prize claims', () => {
     expect(decrypt(cfg, raw.data_enc)).toMatchObject({ legalName: 'Michael Example', taxId: '123-45-6789' });
 
     const list = (await app.inject({ method: 'GET', url: '/admin/claims', headers: ADMIN })).json();
-    expect(list.claims[0]).toMatchObject({ status: 'submitted', form: { legalName: 'Michael Example' }, email: expect.stringContaining('@') });
+    expect(list.claims[0]).toMatchObject({ status: 'submitted', form: { legalName: 'Michael Example' }, email: expect.stringContaining('@'), yearTotal: 2000, needsTaxForm: true });
     expect((await app.inject({ method: 'GET', url: '/admin/claims' })).statusCode).toBe(403);
     for (const status of ['verified', 'paid']) {
       expect((await app.inject({ method: 'PUT', url: `/admin/claims/${cid}/${uid}`, headers: ADMIN, payload: { status } })).statusCode).toBe(200);

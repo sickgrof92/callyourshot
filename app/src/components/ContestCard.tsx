@@ -34,7 +34,7 @@ export function ContestCard({ c, onJoin, joining }: { c: Contest; onJoin: (c: Co
       <Meter value={c.entries} max={c.maxEntries} color={color} />
       <View style={{ marginTop: space.sm }}>
         {c.claim === 'pending' ? (
-          <GameButton title="You won! Claim your prize" variant="primary" size="md" icon="gift" heavy onPress={() => router.push(`/claim/${c.id}`)} />
+          <GameButton title="You won! Claim my prize" variant="primary" size="md" icon="gift" heavy onPress={() => router.push(`/claim/${c.id}`)} />
         ) : c.status === 'ended' ? (
           <Text style={styles.ended}>{c.winner ? `Winner: ${c.winner}` : 'Final results coming soon'}</Text>
         ) : c.joined ? (

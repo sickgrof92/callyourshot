@@ -9,21 +9,22 @@ import { colors, glow, space } from '../lib/theme';
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const STEPS: { icon: IconName; color: string; title: string; body: string }[] = [
-  { icon: 'trophy', color: colors.accent, title: 'Join a contest', body: 'Contests are free. Pick daily, weekly or monthly ones, and join as many as you like. Everyone starts each contest at 0 points.' },
-  { icon: 'flash', color: colors.neon, title: 'Get points', body: 'On the Points tab, watch a short video for 10 points in the contest you are playing.' },
-  { icon: 'american-football', color: colors.pink, title: 'Make picks', body: 'On Games, tap a winner, spread or total. Watch one short ad, then confirm. Winning picks pay points back.' },
-  { icon: 'podium', color: colors.purple, title: 'Climb the board', body: 'The player with the most points when the contest ends wins the prize shown on the contest.' },
+  { icon: 'trophy', color: colors.accent, title: 'Join a contest', body: 'Pick the contest length of your choice, and join as many contests as you’d like. All players start with only the 10 points awarded at the beginning of each contest.' },
+  { icon: 'flash', color: colors.neon, title: 'Get points', body: 'In the Points tab, watch a short video to be awarded your 10 points for the contest you are playing.' },
+  { icon: 'american-football', color: colors.pink, title: 'Make picks', body: 'Search through the available games to make your picks on spreads, winners, or over/unders. After choosing your pick, watch a short ad to be able to confirm it. Winning picks reward points based on how many points you put on the pick and its line. Losing picks lose all the points put on them.' },
+  { icon: 'podium', color: colors.purple, title: 'Climb the board', body: 'The player with the most points at the end of the contest wins the prize(s) listed for that contest.' },
 ];
 
 const FAQ: [string, string][] = [
   ['Does it cost anything?', 'No. Contests are free to enter, and there is nothing to buy. Points have no cash value and can’t be bought, sold or transferred.'],
-  ['What happens when I run out of points?', 'When you have no points and no picks waiting to be graded in a contest, you can watch a video for 10 more. You get 5 refills a day in each contest you join.'],
+  ['What happens when I run out of points?', 'When you have no points and no picks waiting to be graded in a contest, you can watch a video for 10 more. You get 5 refills per day in each contest you join.'],
   ['Why can’t I refill right now?', 'Refills are only for when you’re out. If you have picks in play, wait for them to be graded, or forfeit one after its game starts to get back to 0 sooner.'],
   ['What does forfeit do?', 'Once a game has started, you can give up a pick by watching an ad. It counts as a loss and the points are gone, but it lets you refill sooner.'],
-  ['When do picks lock?', 'At each game’s scheduled start time. Picks only count in a contest if the game starts before the contest ends.'],
-  ['When are picks graded?', 'A few hours after games finish. Games that are postponed or cancelled and have no result after 3 days are refunded.'],
-  ['How are ties broken?', 'Fewest refills used wins, then best win % (forfeits count as losses, pushes don’t count), then most winning picks. If players are still tied, they all win the full prize.'],
-  ['How do I get my prize?', 'If you win, open the contest and tap Claim your prize. We ask for your legal name, mailing address and date of birth to verify you and send it. Canadian winners also answer a short math question.'],
+  ['When do picks lock?', 'At each game’s scheduled start time. A game can only be picked in a contest if it both starts and ends during the contest. Contests end early in the morning (around 5 AM Eastern), so late games still fit.'],
+  ['When are picks graded?', 'Within about 5 minutes of the game ending.'],
+  ['What if a game is postponed or cancelled?', 'Your pick is refunded as soon as the postponement or cancellation is announced, and the points go back to your balance in that contest.'],
+  ['How are ties broken?', '1) Fewest refills used\n2) Best overall win%\n3) Most total winning picks\n4) If players are still tied, all tied players will receive the prize (unless there are more than 3 players tied, in which case additional tiebreakers are decided at the discretion of CallYourShot)'],
+  ['How do I get my prize?', 'If you win, simply open that contest and tap Claim my prize. We ask only for the information we are required to obtain in order to provide your prize: your legal name, mailing address and date of birth. In accordance with Canadian law, winners residing in Canada will also have to answer a short math question. US winners whose prizes total $2,000 or more in value in a calendar year will need to provide their Social Security number or tax ID, and will receive the legally required tax forms.'],
   ['Who can play?', 'Residents of the US and Canada, except Quebec. Winners must be at least the age of majority where they live.'],
   ['Can other players see my info?', 'They see your display name and stats only. Your email, phone number and location are never shown.'],
 ];

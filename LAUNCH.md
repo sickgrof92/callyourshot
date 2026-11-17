@@ -28,6 +28,17 @@ The free plan has no disk, so the database resets on every restart or deploy.
 
 The server warns in its log at startup if sign-in or ads are still stubbed, or `CLAIMS_KEY` is missing.
 
+### Grading picks within 5 minutes (paid Odds API plan)
+
+The FAQ tells players picks are graded within about 5 minutes of a game ending. On the free tier (500 credits a month) the server can't afford that: it checks scores about once per sport every 12 hours, after that day's games. When you move to a paid plan, set these two and redeploy:
+
+| Setting | Value | What it does |
+| --- | --- | --- |
+| `ODDS_API_MONTHLY_CREDITS` | your plan's credits, e.g. `20000` on the $30 plan | Takes the server out of its free-tier "lean" mode. |
+| `SCORES_INTERVAL_MINUTES` | `5` (default `30`) | How often scores are checked once a game with picks on it should be over. Each check costs 2 credits per sport, and checks stop once every pick is graded. If the month runs short, the server stretches the gap on its own so it never runs out. |
+
+Postponed and cancelled games don't depend on this: the schedule is free to check, so the server looks every 30 minutes and refunds those picks as soon as the game is moved or dropped.
+
 ## 3. Sign in with Apple
 
 1. In your Apple Developer account, open **Certificates, Identifiers & Profiles** > **Identifiers**, select the app id `com.callyourshot.app` (create it if needed), and tick **Sign in with Apple**.

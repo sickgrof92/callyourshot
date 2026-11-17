@@ -4,7 +4,7 @@ import { verifyAdmobSsv } from '../src/ads.ts';
 import { buildApp } from '../src/app.ts';
 import { createCompetition } from '../src/competitions.ts';
 import { LEDGER_KINDS } from '../src/db.ts';
-import { gradeEvent } from '../src/grading.ts';
+import { gradeEvent, voidPostponed } from '../src/grading.ts';
 import { applyScores, ingestOdds } from '../src/lines.ts';
 import { et, FakeOddsApi, testConfig, testDb, type FakeGame } from './helpers.ts';
 import { seedPlayer, signUpPlayer, TEST_CONTEST } from './helpers.ts';
@@ -180,7 +180,7 @@ describe('end-to-end', () => {
     expect(picks[0]).toMatchObject({ selection: 'away', competition_name: 'Monthly' });
   });
 
-  it('only allows picks while the contest is live, on games that start before it ends', async () => {
+  it('only allows picks while the contest is live, on games expected to finish before it ends', async () => {
     const { app, db, loadLines } = setup(et(2026, 11, 20, 12));
     await loadLines();
     const mk = (startsAt: number, endsAt: number) => {
@@ -190,13 +190,48 @@ describe('end-to-end', () => {
     };
     const tomorrow = mk(et(2026, 11, 21, 0), et(2026, 11, 22, 0));
     const endsEarly = mk(et(2026, 11, 20, 6), et(2026, 11, 21, 18)); // ends before the 7 PM game on the 21st
+    // Starts before the 7 PM tip, but an NBA game (plus a buffer) isn't expected to be over by 9:30 PM.
+    const endsMidGame = mk(et(2026, 11, 20, 6), et(2026, 11, 21, 21) + 30 * MIN);
+    const endsAt5am = mk(et(2026, 11, 20, 6), et(2026, 11, 22, 5));
     const a = await signUp(app, 'alice', tomorrow);
-    await app.inject({ method: 'POST', url: `/competitions/${endsEarly}/join`, headers: auth(a) });
+    for (const id of [endsEarly, endsMidGame, endsAt5am]) await app.inject({ method: 'POST', url: `/competitions/${id}/join`, headers: auth(a) });
+    await watchAd(app, a, 'points', endsMidGame);
+    await watchAd(app, a, 'points', endsAt5am);
+    const ad1 = (await watchAd(app, a, 'pick')).sessionId!;
+    expect((await pick(app, a, { competitionId: endsMidGame, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad1 })).json().error).toBe('after_contest_end');
+    expect((await pick(app, a, { competitionId: endsAt5am, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad1 })).statusCode).toBe(200);
     expect((await watchAd(app, a, 'points', tomorrow)).start.json().error).toBe('contest_not_live');
     await watchAd(app, a, 'points', endsEarly);
     const ad = (await watchAd(app, a, 'pick')).sessionId!;
     expect((await pick(app, a, { competitionId: tomorrow, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).json().error).toBe('contest_not_live');
     expect((await pick(app, a, { competitionId: endsEarly, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).json().error).toBe('after_contest_end');
+  });
+
+  it('refunds picks as soon as the schedule shows a game postponed or cancelled', async () => {
+    const { app, db, cid, games, loadLines } = setup(et(2026, 11, 21, 12));
+    games.push({ id: 'g2', sport: 'basketball_nba', start: et(2026, 11, 21, 20), home: 'Nets', away: 'Bulls', homeScore: 0, awayScore: 0 });
+    games.push({ id: 'g3', sport: 'basketball_nba', start: et(2026, 11, 21, 21), home: 'Heat', away: 'Magic', homeScore: 0, awayScore: 0 });
+    await loadLines();
+    for (const eventId of ['g1', 'g2', 'g3']) {
+      const a = await signUp(app, `player_${eventId}`, cid);
+      await watchAd(app, a, 'points', cid);
+      const ad = (await watchAd(app, a, 'pick')).sessionId!;
+      expect((await pick(app, a, { competitionId: cid, eventId, market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).statusCode).toBe(200);
+    }
+    const status = () => Object.fromEntries((db.prepare('SELECT event_id, status FROM picks').all() as { event_id: string; status: string }[]).map((r) => [r.event_id, r.status]));
+    const iso = (t: number) => new Date(t).toISOString();
+    // g1 is moved 10 minutes (still on), g2 is pushed to tomorrow (postponed), g3 drops off the schedule (cancelled).
+    const n = voidPostponed(db, 'basketball_nba', [
+      { id: 'g1', commence_time: iso(et(2026, 11, 21, 19) + 10 * MIN) },
+      { id: 'g2', commence_time: iso(et(2026, 11, 22, 19)) },
+    ], et(2026, 11, 21, 13));
+    expect(n).toBe(2);
+    expect(status()).toEqual({ g1: 'pending', g2: 'void', g3: 'void' });
+    // The cancelled game is hidden from Games; the postponed one stays listed.
+    const listed = (await app.inject({ method: 'GET', url: '/lines?sport=basketball_nba' })).json().events.map((e: { id: string }) => e.id);
+    expect(listed).not.toContain('g3');
+    // An empty schedule (a glitch) refunds nothing.
+    expect(voidPostponed(db, 'basketball_nba', [], et(2026, 11, 21, 13))).toBe(0);
   });
 
   it('forfeits a pick as a loss after an ad, only once the game has started, so the player can refill again', async () => {

@@ -26,6 +26,7 @@ export function upsertEvents(db: DB, events: EventSummary[], now: number): void 
       home_team = excluded.home_team,
       away_team = excluded.away_team,
       commence_time = excluded.commence_time,
+      cancelled = 0,
       updated_at = excluded.updated_at
   `);
   for (const e of events) {

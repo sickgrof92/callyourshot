@@ -47,6 +47,8 @@ export interface Config {
   /** Ads for points allowed per day (including a new player's first), and only while out of points. */
   pointsAdsPerDay: number;
 
+  /** Gap between score checks once a game with pending picks should be over (normal mode, not the free-tier lean mode). */
+  scoresIntervalMs: number;
   minPickPoints: number;
   maxPickPoints: number;
 
@@ -103,6 +105,8 @@ export function loadConfig(): Config {
     adProvider,
     pointsAdsPerDay: num('POINTS_ADS_PER_DAY', 5),
 
+    // 30 minutes suits small plans; use 5 on a paid Odds API plan so picks grade within minutes.
+    scoresIntervalMs: num('SCORES_INTERVAL_MINUTES', 30) * 60_000,
     minPickPoints: num('MIN_PICK_POINTS', 10),
     maxPickPoints: num('MAX_PICK_POINTS', 500),
 

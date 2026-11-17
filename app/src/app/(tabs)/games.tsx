@@ -25,11 +25,14 @@ function cellText(market: Market, selection: Selection, point: number | null, pr
   return `${selection === 'over' ? 'O' : 'U'} ${point}  (${signed(price)})`;
 }
 
-function GameCard({ game, onPick }: { game: Game; onPick: (t: PickTarget) => void }) {
+function GameCard({ game, contestEndsAt, onPick }: { game: Game; contestEndsAt: string | null; onPick: (t: PickTarget) => void }) {
+  // Games that won't finish before the active contest ends can't count in it.
+  const tooLate = !!contestEndsAt && !game.locked && Date.parse(game.expectedEndsAt) > Date.parse(contestEndsAt);
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
         <Text style={[styles.time, game.locked && { color: colors.loss }]}>{game.locked ? 'STARTED · PICKS LOCKED' : gameTime(game.startsAt)}</Text>
+        {tooLate && <Text style={styles.tooLate}>ENDS AFTER THIS CONTEST</Text>}
       </View>
       <View style={styles.teams}>
         <Text style={styles.team}>{game.awayTeam}</Text>
@@ -54,7 +57,7 @@ function GameCard({ game, onPick }: { game: Game; onPick: (t: PickTarget) => voi
                   key={sel}
                   variant="ghost"
                   size="sm"
-                  disabled={!q || game.locked}
+                  disabled={!q || game.locked || tooLate}
                   style={{ flex: 1 }}
                   faceStyle={styles.cellFace}
                   onPress={() => q && onPick({ game, market, selection: sel, quote: q })}
@@ -138,7 +141,7 @@ export default function Games() {
         keyExtractor={(g) => g.id}
         contentContainerStyle={{ padding: space.lg, gap: space.md }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
-        renderItem={({ item }) => <GameCard game={item} onPick={(t) => (active ? setTarget(t) : router.push('/'))} />}
+        renderItem={({ item }) => <GameCard game={item} contestEndsAt={active?.endsAt ?? null} onPick={(t) => (active ? setTarget(t) : router.push('/'))} />}
         ListEmptyComponent={
           <Text style={styles.empty}>{error ?? (loading ? '' : 'No upcoming games right now. Check back soon.')}</Text>
         }
@@ -174,6 +177,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.card, borderRadius: 18, padding: space.lg, gap: space.sm, borderWidth: 1.5, borderColor: colors.border },
   cardHead: { flexDirection: 'row', justifyContent: 'space-between' },
   time: { color: colors.neon, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
+  tooLate: { color: colors.muted, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   teams: { marginBottom: space.sm },
   team: { color: colors.text, fontSize: 19, fontWeight: '900' },
   at: { color: colors.pink, fontSize: 12, fontWeight: '900', marginVertical: 1 },

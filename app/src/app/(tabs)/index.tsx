@@ -7,11 +7,12 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Celebration, type CelebrationInfo } from '../../components/Celebration';
+import { ClaimPrizePopup } from '../../components/ClaimPrizePopup';
 import { ContestCard } from '../../components/ContestCard';
 import { FilterIcon, FilterSheet } from '../../components/FilterSheet';
 import { GameButton } from '../../components/GameButton';
 import { api, ApiError, type Contest } from '../../lib/api';
-import { activeChips, DEFAULT_FILTERS, sortLabel, toQuery, type Filters } from '../../lib/contestFilters';
+import { activeChips, DEFAULT_FILTERS, fromSaved, sortLabel, toQuery, type Filters } from '../../lib/contestFilters';
 import { useContests } from '../../lib/contests';
 import { tap, warn } from '../../lib/haptics';
 import { useSession } from '../../lib/session';
@@ -25,6 +26,13 @@ const JOIN_ERRORS: Record<string, string> = {
   ended: 'That contest has ended.',
   already_joined: "You're already in.",
 };
+
+/** Remove one chip's filter (size and length chips cover both ends of their range). */
+function clearChip(f: Filters, key: keyof Filters): Filters {
+  if (key === 'sizeMin') return { ...f, sizeMin: '', sizeMax: '' };
+  if (key === 'lengthMin') return { ...f, lengthMin: DEFAULT_FILTERS.lengthMin, lengthMax: DEFAULT_FILTERS.lengthMax };
+  return { ...f, [key]: DEFAULT_FILTERS[key] };
+}
 
 export default function Contests() {
   const { token } = useSession();
@@ -47,7 +55,7 @@ export default function Contests() {
   // Remember the player's filters between visits.
   useEffect(() => {
     SecureStore.getItemAsync(FILTERS_KEY)
-      .then((raw) => raw && setFilters({ ...DEFAULT_FILTERS, ...(JSON.parse(raw) as Partial<Filters>) }))
+      .then((raw) => raw && setFilters(fromSaved(JSON.parse(raw) as Record<string, unknown>)))
       .catch(() => {})
       .finally(() => setFiltersReady(true));
   }, []);
@@ -131,7 +139,7 @@ export default function Contests() {
         ListHeaderComponent={
           <View style={{ gap: space.sm }}>
             <Text style={[styles.h1, glow(colors.pink, 14)]}>CONTESTS</Text>
-            <Text style={styles.sub}>Free to join, as many as you like. Each contest starts you at 0 points with your own 5 refills a day.</Text>
+            <Text style={styles.sub}>Free to join, as many as you like. Each contest starts you with 10 points and your own 5 refills per day.</Text>
 
             {toClaim.map((c) => (
               <GameButton key={c.id} title={`You won ${c.prize}! Claim it`} variant="primary" icon="gift" heavy onPress={() => router.push(`/claim/${c.id}`)} />
@@ -171,7 +179,7 @@ export default function Contests() {
                     key={c.key}
                     onPress={() => {
                       tap();
-                      applyFilters({ ...filters, [c.key]: DEFAULT_FILTERS[c.key] });
+                      applyFilters(clearChip(filters, c.key));
                     }}
                     style={styles.chip}
                     accessibilityRole="button"
@@ -210,6 +218,7 @@ export default function Contests() {
         }
       />
       <FilterSheet open={sheet} value={filters} sports={sports} onApply={applyFilters} onClose={() => setSheet(false)} />
+      <ClaimPrizePopup contest={party ? null : (toClaim[0] ?? null)} />
       <Celebration info={party} onDone={() => setParty(null)} />
     </View>
   );

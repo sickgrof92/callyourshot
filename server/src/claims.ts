@@ -1,6 +1,6 @@
 // Prize claims. When a contest is finalized, its winner gets a claim. The
 // winner fills in a claim form in the app (legal name, mailing address, birth
-// date and, for US prizes worth $600 or more, a tax id). The form is stored
+// date and, for US winners whose prizes add up to $2,000 or more in a year, a tax id). The form is stored
 // encrypted with CLAIMS_KEY, separately from the player's profile, and only
 // the admin page can read it.
 //
@@ -15,8 +15,25 @@ import { ageOfMajority, ageOn, checkRegion, skillQuestion, type Country } from '
 export const CLAIM_STATUSES = ['pending', 'submitted', 'verified', 'paid', 'ineligible', 'rejected'] as const;
 export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 
-/** US prizes at or above this value (in dollars) need a tax id for a 1099. */
-export const TAX_ID_THRESHOLD = 600;
+/**
+ * US winners whose prizes from us add up to this much (in dollars) in a
+ * calendar year need a tax id, for a 1099-MISC. The IRS raised this from $600
+ * to $2,000 for payments made in 2026 and later.
+ */
+export const TAX_ID_THRESHOLD = 2000;
+
+/** Total value of this player's prizes from contests ending in the same calendar year as `competitionId` (including it). */
+export function prizeTotalForYear(db: DB, competitionId: string, userId: string): number {
+  const c = db.prepare('SELECT ends_at FROM competitions WHERE id = ?').get(competitionId) as { ends_at: number };
+  const year = new Date(c.ends_at).getUTCFullYear();
+  const rows = db
+    .prepare(
+      `SELECT c.prize_value, c.ends_at FROM prize_claims pc JOIN competitions c ON c.id = pc.competition_id
+       WHERE pc.user_id = ? AND pc.status NOT IN ('ineligible', 'rejected')`,
+    )
+    .all(userId) as { prize_value: number; ends_at: number }[];
+  return rows.filter((r) => new Date(r.ends_at).getUTCFullYear() === year).reduce((sum, r) => sum + (r.prize_value || 0), 0);
+}
 
 export interface ClaimForm {
   legalName: string;
@@ -78,14 +95,16 @@ export function claimInfo(db: DB, competitionId: string, userId: string) {
   const claim = getClaim(db, competitionId, userId);
   if (!claim) return null;
   const c = db.prepare('SELECT prize, prize_value FROM competitions WHERE id = ?').get(competitionId) as { prize: string; prize_value: number };
-  const u = db.prepare('SELECT country, region FROM users WHERE id = ?').get(userId) as { country: Country; region: string };
+  const u = db.prepare('SELECT country, region, birth_date FROM users WHERE id = ?').get(userId) as { country: Country; region: string; birth_date: string | null };
   return {
     status: claim.status,
     note: claim.note,
     prize: c.prize,
     country: u.country,
     region: u.region,
-    needsTaxId: u.country === 'US' && c.prize_value >= TAX_ID_THRESHOLD,
+    /** From sign-up, to prefill the form. */
+    birthDate: u.birth_date,
+    needsTaxId: u.country === 'US' && prizeTotalForYear(db, competitionId, userId) >= TAX_ID_THRESHOLD,
     skillQuestion: u.country === 'CA' ? skillQuestion(competitionId).text : null,
   };
 }
@@ -158,7 +177,8 @@ export function listClaims(db: DB, cfg: Config) {
         form = { error: 'Could not decrypt. Was CLAIMS_KEY changed?' };
       }
     }
-    return { ...r, form };
+    const yearTotal = prizeTotalForYear(db, r.competition_id as string, r.user_id as string);
+    return { ...r, form, yearTotal, needsTaxForm: r.country === 'US' && yearTotal >= TAX_ID_THRESHOLD };
   });
 }
 

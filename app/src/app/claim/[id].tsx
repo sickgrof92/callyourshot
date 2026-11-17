@@ -13,7 +13,7 @@ import { colors, glow, space } from '../../lib/theme';
 const ERRORS: Record<string, string> = {
   bad_form: 'Please fill in your full name and address.',
   bad_birth_date: 'Enter your birth date as YYYY-MM-DD, e.g. 1990-05-31.',
-  tax_id_required: 'Prizes worth $600 or more need your SSN or ITIN for tax reporting (Form 1099).',
+  tax_id_required: 'Prizes adding up to $2,000 or more in a year need your SSN or ITIN for tax reporting (Form 1099-MISC).',
   wrong_answer: "That's not right. Check the math and try again.",
   too_many_attempts: "That's 3 wrong answers, so we'll review your claim by email.",
   region_not_eligible: 'Prizes cannot be awarded to residents of Quebec.',
@@ -53,6 +53,7 @@ export default function Claim() {
       .then((i) => {
         setInfo(i);
         setRegion(i.region);
+        if (i.birthDate) setBirth(i.birthDate);
       })
       .catch(() => setError("Couldn't load your claim."));
   }, [token, id]);
@@ -120,7 +121,7 @@ export default function Claim() {
                   {input(birth, setBirth, 'YYYY-MM-DD', { keyboardType: 'numbers-and-punctuation', maxLength: 10 })}
                   {info.needsTaxId && (
                     <>
-                      <Text style={styles.label}>SSN or ITIN (for the 1099 tax form on prizes of $600+)</Text>
+                      <Text style={styles.label}>SSN or ITIN (for the 1099-MISC tax form on prizes of $2,000+ in a year)</Text>
                       {input(taxId, setTaxId, '123-45-6789', { secureTextEntry: true, keyboardType: 'number-pad', maxLength: 11 })}
                     </>
                   )}

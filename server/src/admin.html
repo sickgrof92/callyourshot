@@ -88,7 +88,7 @@
           <select id="ptype"><option value="gift_card">Gift card</option><option value="physical">Physical prize</option></select></div>
         <div><label for="sport">Sport</label><select id="sport" class="sportSel"></select></div>
       </div>
-      <div class="muted" style="margin-top:6px">Prize value is used to ask US winners for a tax ID when it is $600 or more (for a 1099).</div>
+      <div class="muted" style="margin-top:6px">Prize value is used to ask US winners for a tax ID once their prizes add up to $2,000 or more in a year (for a 1099-MISC).</div>
       <div class="row">
         <div><label for="start">Starts</label><input id="start" type="datetime-local"></div>
         <div><label for="end">Ends</label><input id="end" type="datetime-local"></div>
@@ -139,6 +139,7 @@
     </div>
 
     <h2>Winners</h2><div id="claims"></div>
+    <h2>Possible duplicates</h2><div id="dupes"></div>
     <h2>Messages</h2><div id="messages"></div>
     <h2>Upcoming</h2><div id="upcoming"></div>
     <h2>Live</h2><div id="live"></div>
@@ -191,6 +192,7 @@
     $('budget').textContent = `Odds API credits left: ${b.remaining} · today's budget ${b.spentToday}/${b.allowanceToday}${b.mode !== 'normal' ? ` · ${b.mode.toUpperCase()}` : ''}`;
     render();
     loadClaims().catch((err) => { if (err.message !== 'auth') $('claims').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; });
+    loadDupes().catch((err) => { if (err.message !== 'auth') $('dupes').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; });
     loadMessages().catch((err) => { if (err.message !== 'auth') $('messages').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; });
     document.querySelectorAll('.sportSel').forEach((sel) => {
       if (sel.options.length) return;
@@ -284,6 +286,19 @@
   let claims = [];
   // ---- Contact us messages ----
   const TOPIC = { question: 'Question', problem: 'Problem', prize: 'Prize', idea: 'Idea', other: 'Other' };
+  // ---- Possible duplicate people ----
+  async function loadDupes() {
+    const r = await api('/admin/duplicates');
+    $('dupes').previousElementSibling.textContent = `Possible duplicates (${r.groups.length})`;
+    $('dupes').innerHTML = r.groups.length
+      ? r.groups.map((g) => `<div class="card">
+          <span class="badge ${g.kind === 'claim' ? 'live' : 'upcoming'}">${g.kind === 'claim' ? 'Same person (prize claims)' : 'Possibly the same person'}</span>
+          <div class="muted" style="margin:6px 0">${esc(g.reason)}</div>
+          <table><tr><th>Name</th><th>Email</th><th>Phone</th><th>Joined</th></tr>${g.players.map((p) => `<tr><td>${esc(p.displayName)}</td><td>${esc(p.email)}</td><td>${esc(p.phone)}</td><td>${esc(p.joined.slice(0, 10))}</td></tr>`).join('')}</table>
+        </div>`).join('')
+      : '<div class="muted">None found. Accounts are flagged when they share a birth date and state plus a similar email or name, or when prize claims share a legal name, birth date and state. Nothing is blocked automatically.</div>';
+  }
+
   async function loadMessages() {
     const r = await api('/admin/messages');
     const open = r.messages.filter((m) => !m.handled_at).length;
@@ -325,6 +340,7 @@
       if (f.skillPassed) rows.push(['Skill question', 'Answered correctly']);
     }
     if (c.note) rows.push(['Note', esc(c.note)]);
+    const flagHtml = (c.flags || []).map((x) => `<div class="msg err">⚠ ${esc(x)}</div>`).join('');
     const btn = (status, label, cls = 'ghost') => `<button class="small ${cls}" data-claim="${status}" data-cid="${esc(c.competition_id)}" data-uid="${esc(c.user_id)}">${label}</button>`;
     const actions = [];
     if (c.status === 'submitted' || c.status === 'pending') actions.push(btn('verified', 'Mark verified', ''));
@@ -335,8 +351,10 @@
       <span class="badge ${badge}">${CLAIM_LABEL[c.status] || c.status}</span>
       <h3>${esc(c.contest)}</h3>
       <div class="prize">🏆 ${esc(c.prize)}${c.prize_value ? ` · $${c.prize_value}` : ''}</div>
+      <div class="muted">Prizes this year: $${Number(c.yearTotal || 0).toLocaleString()}${c.needsTaxForm ? ' · <b>1099-MISC needed</b>' : ''}</div>
+      ${flagHtml}
       <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd style="margin:0">${v}</dd>`).join('')}</dl>
-      ${c.status === 'pending' ? '<div class="muted">The winner fills in their details in the app (contest screen, Claim your prize).</div>' : ''}
+      ${c.status === 'pending' ? '<div class="muted">The winner fills in their details in the app (contest screen, Claim my prize).</div>' : ''}
       <div id="cmsg-${esc(c.competition_id)}-${esc(c.user_id)}"></div>
       <div class="actions">${actions.join('')}</div>
     </div>`;

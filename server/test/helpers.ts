@@ -125,7 +125,7 @@ export async function signUpPlayer(
     payload: {
       provider: 'apple',
       idToken: `stub-device-${name}-${n}`,
-      profile: { displayName: name, email: `${name}${n}@example.com`, phone: `+1555${String(1000000 + n).slice(-7)}`, ...where, acceptedTerms: true },
+      profile: { displayName: name, email: `${name}${n}@example.com`, phone: `+1555${String(1000000 + n).slice(-7)}`, ...where, birthDate: '1990-05-17', acceptedTerms: true },
     },
   });
   if (res.statusCode !== 200) throw new Error(`sign up failed: ${JSON.stringify(res.json())}`);

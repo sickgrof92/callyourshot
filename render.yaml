@@ -21,6 +21,9 @@ services:
       # Credits in your Odds API plan: 500 on the free tier, 20000 on the $30 plan.
       - key: ODDS_API_MONTHLY_CREDITS
         value: "500"
+      # Minutes between score checks after games end: 30 for testing, 5 on a paid plan.
+      - key: SCORES_INTERVAL_MINUTES
+        value: "30"
       # Day of the month your Odds API plan renews.
       - key: ODDS_API_RESET_DAY
         value: "16"

@@ -22,7 +22,7 @@ export function deleteAccount(db: DB, userId: string): { kept: 'nothing' | 'paid
     }
     db.prepare(
       `UPDATE users SET display_name = ?, token_hash = ?, auth_provider = NULL, auth_sub = NULL, email = NULL, email_key = NULL,
-         phone = NULL, country = NULL, region = NULL, push_token = NULL, phone_verified_at = NULL WHERE id = ?`,
+         phone = NULL, country = NULL, region = NULL, birth_date = NULL, push_token = NULL, phone_verified_at = NULL WHERE id = ?`,
     ).run(`deleted_${randomBytes(4).toString('hex')}`, `deleted-${randomBytes(16).toString('hex')}`, userId);
     return { kept: 'paid_prize_records' as const };
   });

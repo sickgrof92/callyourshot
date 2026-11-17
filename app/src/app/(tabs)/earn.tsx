@@ -57,7 +57,7 @@ export default function Points() {
       detail = `Watch a short video to get ${me.adRewardPoints} points in this contest. ${left} of ${m.pointsAdsPerDay} refills left today.`;
     } else if (m.balance >= me.minPickPoints) {
       title = 'Go make some picks';
-      detail = `You can refill once you're out of points here with no picks in play, up to ${m.pointsAdsPerDay} times a day in each contest.`;
+      detail = `You can refill once you're out of points here with no picks in play, up to ${m.pointsAdsPerDay} times per day in each contest.`;
     } else if (m.picksInPlay > 0) {
       title = `Waiting on ${m.picksInPlay} pick${m.picksInPlay === 1 ? '' : 's'}`;
       detail = 'You can refill once your picks in this contest are graded. If a pick is clearly losing, you can forfeit it in My Picks to get back sooner.';

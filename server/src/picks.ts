@@ -1,3 +1,4 @@
+import { expectedEnd } from './gameLength.ts';
 import { randomUUID } from 'node:crypto';
 import { consumeAd } from './ads.ts';
 import type { Config } from './config.ts';
@@ -50,7 +51,7 @@ export function placePick(db: DB, cfg: Config, userId: string, input: PickInput,
     return { ok: false, error: 'bad_amount' };
   }
   return tx(db, (): PickResult => {
-    const ev = db.prepare('SELECT commence_time, sport FROM events WHERE id = ?').get(input.eventId) as
+    const ev = db.prepare('SELECT commence_time, sport FROM events WHERE id = ? AND cancelled = 0').get(input.eventId) as
       | { commence_time: number; sport: string }
       | undefined;
     if (!ev) return { ok: false, error: 'not_found' };
@@ -64,8 +65,8 @@ export function placePick(db: DB, cfg: Config, userId: string, input: PickInput,
       return { ok: false, error: 'not_joined' };
     }
     if (now < c.starts_at || now >= c.ends_at) return { ok: false, error: 'contest_not_live' };
-    // Only games that start before the contest ends count in it.
-    if (ev.commence_time >= c.ends_at) return { ok: false, error: 'after_contest_end' };
+    // Only games that start and finish (expected) inside the contest count in it.
+    if (expectedEnd(ev.sport, ev.commence_time) > c.ends_at) return { ok: false, error: 'after_contest_end' };
     // A single-sport contest only takes picks on that sport.
     if (c.sport && ev.sport !== c.sport) return { ok: false, error: 'wrong_sport' };
 
