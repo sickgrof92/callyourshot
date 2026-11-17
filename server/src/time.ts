@@ -1,6 +1,6 @@
 // Time-zone helpers built on Intl so we need no date library.
 
-const MINUTE = 60_000;
+export const MINUTE = 60_000;
 export const HOUR = 60 * MINUTE;
 export const DAY = 24 * HOUR;
 

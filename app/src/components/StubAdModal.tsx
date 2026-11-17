@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, space } from '../lib/theme';
+import { GameButton } from './GameButton';
 
 const SECONDS = 5;
 
@@ -24,9 +25,7 @@ export function StubAdModal({ visible, onFinish }: { visible: boolean; onFinish:
         {left > 0 ? (
           <Text style={styles.count}>Done in {left}s</Text>
         ) : (
-          <Pressable style={styles.btn} onPress={() => onFinish(true)}>
-            <Text style={styles.btnText}>Continue</Text>
-          </Pressable>
+          <GameButton title="Continue" variant="go" style={{ marginTop: space.lg, minWidth: 200 }} onPress={() => onFinish(true)} />
         )}
         <Pressable onPress={() => onFinish(false)} style={styles.close}>
           <Text style={styles.closeText}>Close</Text>
@@ -37,7 +36,7 @@ export function StubAdModal({ visible, onFinish }: { visible: boolean; onFinish:
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center', padding: space.xl, gap: space.md },
+  wrap: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: space.xl, gap: space.md },
   tag: { color: colors.accent, fontWeight: '700', letterSpacing: 2 },
   title: { color: colors.text, fontSize: 22, fontWeight: '700', textAlign: 'center' },
   sub: { color: colors.muted, textAlign: 'center' },

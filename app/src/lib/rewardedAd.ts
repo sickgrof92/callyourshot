@@ -28,6 +28,26 @@ export function realAdsAvailable(): boolean {
 }
 
 let initialized: Promise<unknown> | null = null;
+let personalized = false;
+
+/**
+ * iPhone only: ask once for App Tracking Transparency permission, right before
+ * the first real ad (not at launch). If the player says no, ads are
+ * non-personalized. Play is the same either way.
+ */
+async function askTracking(): Promise<boolean> {
+  if (Platform.OS !== 'ios') return true;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const att = require('expo-tracking-transparency') as typeof import('expo-tracking-transparency');
+    const cur = await att.getTrackingPermissionsAsync();
+    if (cur.granted) return true;
+    if (!cur.canAskAgain) return false;
+    return (await att.requestTrackingPermissionsAsync()).granted;
+  } catch {
+    return false;
+  }
+}
 
 function rewardedUnitId(m: AdsModule): string {
   const fromEnv = Platform.select({
@@ -42,9 +62,13 @@ function rewardedUnitId(m: AdsModule): string {
 export async function showRewardedAd(sessionId: string, userId: string): Promise<boolean> {
   const m = adsModule();
   if (!m) throw new Error('Ads are not available in this build');
-  initialized ??= m.default().initialize();
+  initialized ??= askTracking().then((ok) => {
+    personalized = ok;
+    return m.default().initialize();
+  });
   await initialized;
   const ad = m.RewardedAd.createForAdRequest(rewardedUnitId(m), {
+    requestNonPersonalizedAdsOnly: !personalized,
     serverSideVerificationOptions: { userId, customData: sessionId },
   });
   return new Promise<boolean>((resolve, reject) => {

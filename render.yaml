@@ -27,6 +27,12 @@ services:
       # "stub" plays a fake 5-second video so you can test without an ad account.
       - key: AD_PROVIDER
         value: stub
+      # "stub" accepts a test sign-in so you can use Expo Go. Set to "live" at launch (see LAUNCH.md).
+      - key: AUTH_MODE
+        value: stub
+      # Encrypts winners' prize details. Generated once; never change it after launch.
+      - key: CLAIMS_KEY
+        generateValue: true
       - key: DB_PATH
         value: ./data/callyourshot.db
     # The free plan has no persistent disk: the database resets whenever the

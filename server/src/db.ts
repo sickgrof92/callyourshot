@@ -14,27 +14,45 @@ CREATE TABLE IF NOT EXISTS users (
   id            TEXT PRIMARY KEY,
   display_name  TEXT NOT NULL UNIQUE COLLATE NOCASE,
   token_hash    TEXT NOT NULL UNIQUE,
-  balance       INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0),
-  created_at    INTEGER NOT NULL
+  created_at    INTEGER NOT NULL,
+  -- Sign-in (Apple or Google) and contact details given at sign-up.
+  auth_provider TEXT,
+  auth_sub      TEXT,
+  email         TEXT,
+  email_key     TEXT,
+  phone         TEXT,
+  -- Where they live (US state or Canadian province). Quebec is not eligible.
+  country       TEXT,
+  region        TEXT,
+  -- When they agreed to the Official Rules and Privacy Policy, and which version.
+  terms_accepted_at INTEGER,
+  terms_version TEXT,
+  -- Expo push token, and which of the 4 notification kinds they want (all on by default).
+  push_token    TEXT,
+  notify_contest_start INTEGER NOT NULL DEFAULT 1,
+  notify_game_start    INTEGER NOT NULL DEFAULT 1,
+  notify_results       INTEGER NOT NULL DEFAULT 1,
+  notify_new_contests  INTEGER NOT NULL DEFAULT 1,
+  -- Set once SMS verification is turned on and the player confirms a code.
+  phone_verified_at INTEGER
 );
+-- One account per sign-in, per email and per phone number.
+CREATE UNIQUE INDEX IF NOT EXISTS users_auth ON users(auth_provider, auth_sub);
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users(email_key);
+CREATE UNIQUE INDEX IF NOT EXISTS users_phone ON users(phone);
 
--- Every change to a balance is a ledger row. amount is the effect on the
--- spendable balance; score_delta is the effect on the leaderboard.
+-- Every change to a contest balance is a ledger row. Points only exist
+-- inside a contest: each entry starts at 0, and nothing moves between contests.
 CREATE TABLE IF NOT EXISTS ledger (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id      TEXT NOT NULL REFERENCES users(id),
-  kind         TEXT NOT NULL CHECK (kind IN (${LEDGER_KINDS.map((k) => `'${k}'`).join(',')})),
-  amount       INTEGER NOT NULL,
-  score_delta  INTEGER NOT NULL,
-  ref          TEXT,
-  created_at   INTEGER NOT NULL,
-  -- When the score counts for leaderboards. Ad rewards count when earned; pick
-  -- results count at the game's start time, so a late game graded after
-  -- midnight still belongs to the week it was played in.
-  score_at     INTEGER NOT NULL
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id        TEXT NOT NULL REFERENCES users(id),
+  competition_id TEXT NOT NULL REFERENCES competitions(id),
+  kind           TEXT NOT NULL CHECK (kind IN (${LEDGER_KINDS.map((k) => `'${k}'`).join(',')})),
+  amount         INTEGER NOT NULL,
+  ref            TEXT,
+  created_at     INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS ledger_score_at ON ledger(score_at);
-CREATE INDEX IF NOT EXISTS ledger_user ON ledger(user_id, score_at);
+CREATE INDEX IF NOT EXISTS ledger_entry ON ledger(competition_id, user_id);
 
 CREATE TABLE IF NOT EXISTS events (
   id             TEXT PRIMARY KEY,
@@ -64,6 +82,7 @@ CREATE TABLE IF NOT EXISTS lines (
 CREATE TABLE IF NOT EXISTS picks (
   id          TEXT PRIMARY KEY,
   user_id     TEXT NOT NULL REFERENCES users(id),
+  competition_id TEXT NOT NULL REFERENCES competitions(id),
   event_id    TEXT NOT NULL REFERENCES events(id),
   market      TEXT NOT NULL,
   selection   TEXT NOT NULL,
@@ -75,21 +94,24 @@ CREATE TABLE IF NOT EXISTS picks (
   created_at  INTEGER NOT NULL,
   settled_at  INTEGER,
   forfeited_at INTEGER,
-  UNIQUE (user_id, event_id, market)
+  UNIQUE (competition_id, user_id, event_id, market)
 );
 CREATE INDEX IF NOT EXISTS picks_pending ON picks(status, event_id);
+CREATE INDEX IF NOT EXISTS picks_entry ON picks(competition_id, user_id, status);
 
 CREATE TABLE IF NOT EXISTS ad_sessions (
   id             TEXT PRIMARY KEY,
   user_id        TEXT NOT NULL REFERENCES users(id),
   purpose        TEXT NOT NULL DEFAULT 'points' CHECK (purpose IN ('points','pick','forfeit')),
+  -- Points videos refill one contest's balance.
+  competition_id TEXT REFERENCES competitions(id),
   created_at     INTEGER NOT NULL,
   rewarded_at    INTEGER,
   transaction_id TEXT UNIQUE,
   used_at        INTEGER,
   used_for       TEXT
 );
-CREATE INDEX IF NOT EXISTS ad_sessions_user ON ad_sessions(user_id, rewarded_at);
+CREATE INDEX IF NOT EXISTS ad_sessions_user ON ad_sessions(user_id, competition_id, rewarded_at);
 
 -- One row per Odds API request, with the usage headers it returned.
 CREATE TABLE IF NOT EXISTS api_calls (
@@ -117,16 +139,70 @@ CREATE TABLE IF NOT EXISTS budget_days (
   created_at  INTEGER NOT NULL
 );
 
--- Prizes are fixed and announced before their period starts. Nothing here
--- references ad revenue, and there is no way to edit a prize once its period begins.
-CREATE TABLE IF NOT EXISTS prizes (
-  id            TEXT PRIMARY KEY,
-  period_key    TEXT NOT NULL UNIQUE,
-  title         TEXT NOT NULL,
-  description   TEXT NOT NULL,
-  announced_at  INTEGER NOT NULL,
+-- Contests the admin creates. Prize, cap and times are fixed once a contest starts.
+CREATE TABLE IF NOT EXISTS competitions (
+  id             TEXT PRIMARY KEY,
+  name           TEXT NOT NULL,
+  kind           TEXT NOT NULL CHECK (kind IN ('daily','weekly','monthly')),
+  prize          TEXT NOT NULL,
+  prize_details  TEXT NOT NULL DEFAULT '',
+  -- Retail value in US dollars, for tax forms. 0 if not set.
+  prize_value    INTEGER NOT NULL DEFAULT 0,
+  -- 'gift_card' or 'physical' (shown as a filter in the app).
+  prize_type     TEXT NOT NULL DEFAULT 'gift_card' CHECK (prize_type IN ('gift_card','physical')),
+  -- An Odds API sport key for a single-sport contest, or NULL for any sport.
+  sport          TEXT,
+  max_entries    INTEGER NOT NULL CHECK (max_entries > 0),
+  starts_at      INTEGER NOT NULL,
+  ends_at        INTEGER NOT NULL,
+  created_at     INTEGER NOT NULL,
   winner_user_id TEXT REFERENCES users(id),
-  finalized_at  INTEGER
+  finalized_at   INTEGER
+);
+CREATE INDEX IF NOT EXISTS competitions_time ON competitions(ends_at, starts_at);
+CREATE INDEX IF NOT EXISTS competitions_start ON competitions(starts_at);
+
+-- Messages players send from Contact us. The admin page lists them.
+CREATE TABLE IF NOT EXISTS contact_messages (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id),
+  topic      TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  handled_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS contact_messages_time ON contact_messages(created_at);
+
+-- Joining is free. One row per player per contest, holding that contest's
+-- points balance. Everyone starts at 0.
+CREATE TABLE IF NOT EXISTS competition_entries (
+  competition_id TEXT NOT NULL REFERENCES competitions(id),
+  user_id        TEXT NOT NULL REFERENCES users(id),
+  joined_at      INTEGER NOT NULL,
+  balance        INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0),
+  PRIMARY KEY (competition_id, user_id)
+);
+
+
+-- One claim per winner of a finished contest (more than one only if they
+-- are still tied after every tiebreaker; each gets the full prize). The claim form (legal name,
+-- address, birth date, tax id) is encrypted, separate from the profile.
+CREATE TABLE IF NOT EXISTS prize_claims (
+  competition_id TEXT NOT NULL REFERENCES competitions(id),
+  user_id        TEXT NOT NULL REFERENCES users(id),
+  status         TEXT NOT NULL CHECK (status IN ('pending','submitted','verified','paid','ineligible','rejected')),
+  data_enc       TEXT,
+  skill_attempts INTEGER NOT NULL DEFAULT 0,
+  note           TEXT NOT NULL DEFAULT '',
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL,
+  PRIMARY KEY (competition_id, user_id)
+);
+
+-- Push notifications already sent, so each goes out once.
+CREATE TABLE IF NOT EXISTS notifications_sent (
+  key      TEXT PRIMARY KEY,
+  sent_at  INTEGER NOT NULL
 );
 `;
 
@@ -139,18 +215,27 @@ export function openDb(path: string): DB {
   return db;
 }
 
-/** Bring databases created by older versions up to the current schema. */
+/**
+ * Databases from before points moved inside contests can't be converted, so
+ * their player data is cleared (games, lines and Odds API usage are kept, so
+ * no credits are spent reloading). This only matters before launch.
+ */
 function migrate(db: DB): void {
-  const cols = db.prepare("SELECT name FROM pragma_table_info('ad_sessions')").all() as { name: string }[];
-  if (cols.length === 0) return; // fresh database
-  const has = (c: string) => cols.some((x) => x.name === c);
-  if (!has('purpose')) {
-    db.exec("ALTER TABLE ad_sessions ADD COLUMN purpose TEXT NOT NULL DEFAULT 'points' CHECK (purpose IN ('points','pick','forfeit'))");
+  const colsOf = (t: string) => (db.prepare(`SELECT name FROM pragma_table_info('${t}')`).all() as { name: string }[]).map((x) => x.name);
+  const ledger = colsOf('ledger');
+  if (ledger.length === 0) return; // fresh database
+  if (ledger.includes('competition_id') && colsOf('users').includes('push_token') && colsOf('competitions').includes('prize_value')) {
+    // Columns added later keep existing data.
+    const comp = colsOf('competitions');
+    if (!comp.includes('prize_type')) {
+      db.exec("ALTER TABLE competitions ADD COLUMN prize_type TEXT NOT NULL DEFAULT 'gift_card' CHECK (prize_type IN ('gift_card','physical'))");
+    }
+    if (!comp.includes('sport')) db.exec('ALTER TABLE competitions ADD COLUMN sport TEXT');
+    return;
   }
-  if (!has('used_at')) db.exec('ALTER TABLE ad_sessions ADD COLUMN used_at INTEGER');
-  if (!has('used_for')) db.exec('ALTER TABLE ad_sessions ADD COLUMN used_for TEXT');
-  const pickCols = db.prepare("SELECT name FROM pragma_table_info('picks')").all() as { name: string }[];
-  if (pickCols.length && !pickCols.some((x) => x.name === 'forfeited_at')) db.exec('ALTER TABLE picks ADD COLUMN forfeited_at INTEGER');
+  db.exec('PRAGMA foreign_keys = OFF');
+  for (const t of ['prize_claims', 'ledger', 'picks', 'ad_sessions', 'competition_entries', 'competitions', 'prizes', 'users']) db.exec(`DROP TABLE IF EXISTS ${t}`);
+  db.exec('PRAGMA foreign_keys = ON');
 }
 
 /** Run fn inside a write transaction. */

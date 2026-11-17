@@ -82,22 +82,22 @@ The message shows the address the app is trying. If it says `http://localhost:80
 
 ## Part 3: Try it
 
-1. Pick a display name.
-2. On the **Points** tab, tap **Watch video for 10 points**. In test mode a fake 5-second video plays instead of a real ad.
-3. Go to **Games**, pick a sport, and tap a line. Tap **Watch ad to confirm pick**, let the ad finish, then tap **Confirm pick**.
-4. Once you're at 0 points with no picks in play, the Points tab lets you watch for 10 more (up to 5 times a day, counting the first).
-5. After a game starts, **My Picks** shows a red **FORFEIT THIS PICK** button on that pick. Forfeiting counts it as a loss, so you can get back to 0 and watch for new points sooner.
-6. Check **My Picks** after the game ends. Picks are graded a few hours after games finish (on the free plan, scores are checked a few times a day).
-7. **Leaders** shows the weekly and monthly boards.
+First, create a contest or two on the admin page (`https://your-url.onrender.com/admin`, password is your `ADMIN_TOKEN`). "7-day contests, one starting each day" sets up a week of them at once. Contests have to be created before they start, so the first ones open tomorrow; for a quick test, make one that starts a few minutes from now.
+
+1. Tap **Continue with Apple** or **Continue with Google**. In test mode no real sign-in happens; your account is tied to the phone. Fill in a display name, email, phone, and state or province, and tick the agreement.
+2. On **Contests**, tap **Join free** on a live contest. Each contest starts you at 0. The strip at the top of Games and Points shows which contest you're playing; tap another to switch.
+3. On the **Points** tab, tap **Watch video for 10 points**. In test mode a fake 5-second video plays instead of a real ad.
+4. Go to **Games**, pick a sport, and tap a line. Tap **Watch ad to confirm pick**, let the ad finish, then tap **Confirm pick**.
+5. Once you're at 0 points with no picks in play in that contest, Points lets you watch for 10 more (up to 5 times a day in each contest).
+6. After a game starts, **My Picks** shows a red **FORFEIT THIS PICK** button on that pick. Forfeiting counts it as a loss, so you can get back to 0 and watch for new points sooner.
+7. Check **My Picks** after the game ends. Picks are graded a few hours after games finish (on the free plan, scores are checked a few times a day).
+8. Open a contest to see its board. Tap any name to see that player's record.
+9. The ☰ menu at the top left has your profile, How to play & FAQ, the rules, Contact us and sign out. **Filters** at the top of Contests narrows the list by sport, start, length, size and prize type.
+10. The bell at the top right turns each kind of notification on or off. On Android, Expo Go can't receive push notifications, so that part needs a development build; on iPhone, Expo Go works.
+11. When a contest ends, tap **Pick winner** on the admin page. The winner sees **Claim your prize** on the contest. Their details then appear under **Winners** on the admin page.
 
 Lines only appear after the server's first update for that sport. On the free plan, 2 or 3 sports get fresh lines each day, about 2 hours before their first game, and the sports take turns. A sport that shows "Lines coming soon" will usually have lines later today or tomorrow. If a sport shows no games, try another one or check back later.
 
 ## Admin checks (optional)
 
-See how many Odds API credits are left (replace the URL and password):
-
-```
-curl https://callyourshot-api.onrender.com/admin/budget -H "authorization: Bearer YOUR_ADMIN_PASSWORD"
-```
-
-The README has the commands for announcing prizes.
+The admin page at `/admin` shows how many Odds API credits are left at the top. The README describes everything else on it.

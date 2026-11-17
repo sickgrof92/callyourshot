@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { tx } from '../src/db.ts';
+
 import { placePick } from '../src/picks.ts';
-import { postLedger } from '../src/points.ts';
 import { tick } from '../src/scheduler.ts';
 import { sportsDay } from '../src/time.ts';
-import { et, FakeOddsApi, pickAd, testConfig, testDb, type FakeGame } from './helpers.ts';
+import { et, FakeOddsApi, pickAd, seedPlayer, TEST_CONTEST, testConfig, testDb, type FakeGame } from './helpers.ts';
 
 const MIN = 60_000;
 
@@ -36,8 +35,7 @@ describe('free tier (500 credits a month)', () => {
     const start = Date.UTC(2026, 10, 1, 0, 1);
     const end = Date.UTC(2026, 10, 30, 23, 55);
     const api = new FakeOddsApi(games, () => start, 500);
-    db.prepare("INSERT INTO users (id, display_name, token_hash, created_at) VALUES ('u', 'u', 'h', 0)").run();
-    tx(db, () => postLedger(db, { userId: 'u', kind: 'ad_reward', amount: 100000, scoreDelta: 0, ref: null, at: start }));
+    seedPlayer(db, 'u', 100000, start);
 
     let placed = 0;
     for (let t = start; t <= end; t += 5 * MIN) {
@@ -46,7 +44,7 @@ describe('free tier (500 credits a month)', () => {
       const day = sportsDay(t, cfg.timeZone, cfg.dayStartHour);
       if (t - day.start >= 10 * 60 * MIN && t - day.start < 10 * 60 * MIN + 5 * MIN) {
         for (const g of games.filter((x) => x.start > t && x.start < day.end)) {
-          if (placePick(db, cfg, 'u', { eventId: g.id, market: 'moneyline', selection: 'home', points: 10, adSessionId: pickAd(db, cfg, 'u', t) }, t).ok) placed++;
+          if (placePick(db, cfg, 'u', { competitionId: TEST_CONTEST, eventId: g.id, market: 'moneyline', selection: 'home', points: 10, adSessionId: pickAd(db, cfg, 'u', t) }, t).ok) placed++;
         }
       }
       await tick(db, cfg, api, t);

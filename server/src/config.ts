@@ -49,6 +49,20 @@ export interface Config {
 
   minPickPoints: number;
   maxPickPoints: number;
+
+  /** stub = accept fake sign-in tokens (Expo Go, testing); live = verify real Apple/Google tokens. */
+  authMode: 'stub' | 'live';
+  /** Apple: the app's bundle id (and a Services ID if you add web sign-in). */
+  appleClientIds: string[];
+  /** Google: the OAuth client ids for iOS, Android and web. */
+  googleClientIds: string[];
+
+  /** Secret that encrypts prize claim forms. Prize claims are refused until it is set. */
+  claimsKey: string;
+  /** Version of the Official Rules and Privacy Policy players agree to at sign-up. */
+  termsVersion: string;
+  /** AdMob rewarded ad unit ids (the number after the slash). If set, callbacks for other units are refused. */
+  admobAdUnits: string[];
 }
 
 export function loadConfig(): Config {
@@ -56,6 +70,8 @@ export function loadConfig(): Config {
   if (adProvider !== 'stub' && adProvider !== 'admob') {
     throw new Error('AD_PROVIDER must be "stub" or "admob"');
   }
+  const authMode = str('AUTH_MODE', 'stub');
+  if (authMode !== 'stub' && authMode !== 'live') throw new Error('AUTH_MODE must be "stub" or "live"');
   return {
     port: num('PORT', 8080),
     dbPath: str('DB_PATH', './data/callyourshot.db'),
@@ -89,6 +105,14 @@ export function loadConfig(): Config {
 
     minPickPoints: num('MIN_PICK_POINTS', 10),
     maxPickPoints: num('MAX_PICK_POINTS', 500),
+
+    authMode,
+    appleClientIds: list('APPLE_CLIENT_IDS', ['com.callyourshot.app']),
+    googleClientIds: list('GOOGLE_CLIENT_IDS', []),
+
+    claimsKey: str('CLAIMS_KEY', ''),
+    termsVersion: str('TERMS_VERSION', '2026-11-16'),
+    admobAdUnits: list('ADMOB_AD_UNIT_IDS', []),
   };
 }
 

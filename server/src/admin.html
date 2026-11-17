@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Call Your Shot Admin</title>
+<style>
+  :root {
+    --bg: #0b0b1a; --card: #16163a; --card2: #20204d; --line: #2e2e66; --text: #f4f4ff; --muted: #9a9ac8;
+    --accent: #ffd23f; --accent-dark: #c79a00; --cyan: #29e7ff; --green: #3cff9e; --red: #ff3b5c; --red-dark: #b3123a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 22px; margin: 8px 0 4px; color: var(--accent); letter-spacing: .5px; }
+  h2 { font-size: 17px; margin: 24px 0 8px; color: var(--cyan); text-transform: uppercase; letter-spacing: 1px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin: 10px 0; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input, textarea, select { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card2); color: var(--text); font-size: 16px; }
+  textarea { min-height: 60px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 140px; }
+  button { font: inherit; font-weight: 800; border: 0; border-radius: 12px; padding: 12px 16px; cursor: pointer; color: #1a1300; background: var(--accent); box-shadow: 0 4px 0 var(--accent-dark); }
+  button:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--accent-dark); }
+  button.ghost { background: var(--card2); color: var(--text); box-shadow: 0 4px 0 #111133; }
+  button.danger { background: var(--red); color: #fff; box-shadow: 0 4px 0 var(--red-dark); }
+  button.small { padding: 8px 12px; font-size: 14px; }
+  .kinds button { flex: 1; }
+  .kinds button.on { background: var(--cyan); color: #00222a; box-shadow: 0 4px 0 #0a8fa0; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--card2); color: var(--cyan); text-transform: uppercase; }
+  .badge.live { background: var(--green); color: #002412; }
+  .badge.ended { background: #444; color: #ddd; }
+  .contest h3 { margin: 6px 0 2px; font-size: 18px; }
+  .prize { color: var(--accent); font-weight: 800; }
+  .bar { height: 8px; background: var(--card2); border-radius: 99px; overflow: hidden; margin: 8px 0; }
+  .bar > div { height: 100%; background: linear-gradient(90deg, var(--cyan), var(--green)); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .msg { padding: 10px 12px; border-radius: 10px; margin: 10px 0; }
+  .msg.err { background: #3a1020; color: #ffb3c1; }
+  .msg.ok { background: #0f3324; color: #b6ffd9; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  .hidden { display: none; }
+  .secret { filter: blur(5px); cursor: pointer; }
+  .secret.shown { filter: none; }
+  th { text-align: left; font-size: 12px; color: var(--muted, #9aa); padding: 4px; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 8px 0; font-size: 14px; }
+  dt { color: #9aa; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Call Your Shot Admin</h1>
+  <div class="muted" id="sub">Contests and prizes</div>
+
+  <section id="login" class="card hidden">
+    <label for="pw">Admin password</label>
+    <input id="pw" type="password" autocomplete="current-password">
+    <div class="actions"><button id="loginBtn">Sign in</button></div>
+    <div id="loginMsg"></div>
+  </section>
+
+  <section id="app" class="hidden">
+    <div class="card muted" id="budget"></div>
+
+    <h2 id="formTitle">One contest</h2>
+    <div class="card">
+      <div class="row kinds" id="kinds">
+        <button class="ghost" data-kind="daily">Daily</button>
+        <button class="ghost" data-kind="weekly">Weekly</button>
+        <button class="ghost" data-kind="monthly">Monthly</button>
+      </div>
+      <div class="muted" style="margin-top:8px">Picking a type fills in the next open dates (daily: tomorrow; weekly: 7 days from tomorrow; monthly: 30 days from next Monday). You can change anything.</div>
+      <label for="name">Name</label>
+      <input id="name" maxlength="80" placeholder="Daily: Tue, Nov 17">
+      <label for="prize">Prize</label>
+      <input id="prize" maxlength="120" placeholder="$25 Amazon gift card">
+      <label for="details">Prize details (optional)</label>
+      <textarea id="details" maxlength="1000" placeholder="Winner is contacted in the app within 48 hours."></textarea>
+      <div class="row">
+        <div><label for="max">Max entries</label><input id="max" type="number" min="1" value="500" inputmode="numeric"></div>
+        <div><label for="value">Prize value ($)</label><input id="value" type="number" min="0" value="0" inputmode="numeric"></div>
+      </div>
+      <div class="row">
+        <div><label for="ptype">Prize type</label>
+          <select id="ptype"><option value="gift_card">Gift card</option><option value="physical">Physical prize</option></select></div>
+        <div><label for="sport">Sport</label><select id="sport" class="sportSel"></select></div>
+      </div>
+      <div class="muted" style="margin-top:6px">Prize value is used to ask US winners for a tax ID when it is $600 or more (for a 1099).</div>
+      <div class="row">
+        <div><label for="start">Starts</label><input id="start" type="datetime-local"></div>
+        <div><label for="end">Ends</label><input id="end" type="datetime-local"></div>
+      </div>
+      <div class="muted" style="margin-top:6px">Times are in your phone's time zone. Prize, entries and times lock once a contest starts.</div>
+      <div id="formMsg"></div>
+      <div class="actions">
+        <button id="saveBtn">Create contest</button>
+        <button id="cancelEdit" class="ghost hidden">Cancel edit</button>
+      </div>
+    </div>
+
+    <h2>Schedule a run of contests</h2>
+    <div class="card">
+      <div class="row">
+        <button class="ghost" id="runWeekly">7-day contests, one starting each day</button>
+        <button class="ghost" id="runMonthly">30-day contests, one every Monday</button>
+      </div>
+      <div class="muted" style="margin-top:8px">Fills in the form below. Each contest gets its own name with its start day, e.g. "Weekly: Mon, Nov 23".</div>
+      <div class="row">
+        <div><label for="bKind">Type</label>
+          <select id="bKind"><option value="daily">Daily</option><option value="weekly" selected>Weekly</option><option value="monthly">Monthly</option></select></div>
+        <div><label for="bName">Name (optional)</label><input id="bName" maxlength="60" placeholder="Weekly"></div>
+      </div>
+      <label for="bPrize">Prize (same for each)</label>
+      <input id="bPrize" maxlength="120" placeholder="$50 Amazon gift card">
+      <label for="bDetails">Prize details (optional)</label>
+      <textarea id="bDetails" maxlength="1000"></textarea>
+      <div class="row">
+        <div><label for="bFirst">First one starts</label><input id="bFirst" type="datetime-local"></div>
+        <div><label for="bLength">Length (days)</label><input id="bLength" type="number" min="1" max="92" value="7" inputmode="numeric"></div>
+      </div>
+      <div class="row">
+        <div><label for="bEvery">A new one starts every</label>
+          <select id="bEvery"><option value="1">day</option><option value="7">week</option></select></div>
+        <div><label for="bCount">How many</label><input id="bCount" type="number" min="1" max="60" value="7" inputmode="numeric"></div>
+        <div><label for="bMax">Max entries each</label><input id="bMax" type="number" min="1" value="500" inputmode="numeric"></div>
+        <div><label for="bValue">Prize value ($)</label><input id="bValue" type="number" min="0" value="0" inputmode="numeric"></div>
+      </div>
+      <div class="row">
+        <div><label for="bPtype">Prize type</label>
+          <select id="bPtype"><option value="gift_card">Gift card</option><option value="physical">Physical prize</option></select></div>
+        <div><label for="bSport">Sport</label><select id="bSport" class="sportSel"></select></div>
+      </div>
+      <div class="muted" id="bPreview" style="margin-top:8px"></div>
+      <div id="bMsg"></div>
+      <div class="actions"><button id="bSave">Create all</button></div>
+    </div>
+
+    <h2>Winners</h2><div id="claims"></div>
+    <h2>Messages</h2><div id="messages"></div>
+    <h2>Upcoming</h2><div id="upcoming"></div>
+    <h2>Live</h2><div id="live"></div>
+    <h2>Ended</h2><div id="ended"></div>
+    <div class="actions" style="margin:24px 0"><button class="ghost small" id="logout">Sign out</button></div>
+  </section>
+</main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const KEY = 'cys-admin';
+  let token = null;
+  try { token = localStorage.getItem(KEY); } catch {}
+  let data = null;
+  let kind = 'daily';
+  let editing = null;
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const toLocalInput = (iso) => {
+    const d = new Date(iso); const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  const fromLocalInput = (v) => new Date(v).toISOString();
+  const when = (iso) => new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const show = (el, text, ok) => { el.innerHTML = text ? `<div class="msg ${ok ? 'ok' : 'err'}">${esc(text)}</div>` : ''; };
+
+  async function api(path, opts = {}) {
+    const res = await fetch(path, {
+      method: opts.method || 'GET',
+      headers: { authorization: `Bearer ${token}`, ...(opts.body ? { 'content-type': 'application/json' } : {}) },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.status === 403) { signOut('Wrong password.'); throw new Error('auth'); }
+    if (res.status === 429) { signOut(json.error); throw new Error('auth'); }
+    if (!res.ok) throw new Error(json.error === 'bad_request' ? 'Please check the fields.' : (json.error || 'Something went wrong.'));
+    return json;
+  }
+
+  function signOut(msg) {
+    token = null; try { localStorage.removeItem(KEY); } catch {}
+    $('app').classList.add('hidden'); $('login').classList.remove('hidden');
+    show($('loginMsg'), msg || '', false);
+  }
+
+  async function load() {
+    data = await api('/admin/competitions');
+    $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+    const b = data.budget;
+    $('budget').textContent = `Odds API credits left: ${b.remaining} · today's budget ${b.spentToday}/${b.allowanceToday}${b.mode !== 'normal' ? ` · ${b.mode.toUpperCase()}` : ''}`;
+    render();
+    loadClaims().catch((err) => { if (err.message !== 'auth') $('claims').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; });
+    loadMessages().catch((err) => { if (err.message !== 'auth') $('messages').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; });
+    document.querySelectorAll('.sportSel').forEach((sel) => {
+      if (sel.options.length) return;
+      sel.innerHTML = '<option value="">All sports</option>' + data.sports.map((x) => `<option value="${esc(x.key)}">${esc(x.label)} only</option>`).join('');
+    });
+    if (!editing && !$('name').value) pickKind(kind);
+    if (!$('bFirst').value) runPreset('weekly');
+    preview();
+  }
+
+  // ---- Runs of contests ----
+  function runPreset(k) {
+    const p = data.presets[k];
+    $('bKind').value = k; $('bFirst').value = toLocalInput(p.startsAt); $('bLength').value = p.lengthDays;
+    $('bEvery').value = k === 'monthly' ? '7' : '1'; $('bCount').value = k === 'monthly' ? 4 : 7;
+    preview();
+  }
+  function bulkBody() {
+    return {
+      kind: $('bKind').value, name: $('bName').value, prize: $('bPrize').value, prizeDetails: $('bDetails').value,
+      maxEntries: Number($('bMax').value), prizeValue: Number($('bValue').value) || 0, prizeType: $('bPtype').value, sport: $('bSport').value || null, firstStart: fromLocalInput($('bFirst').value),
+      lengthDays: Number($('bLength').value), everyDays: Number($('bEvery').value), count: Number($('bCount').value),
+    };
+  }
+  function preview() {
+    if (!$('bFirst').value) { $('bPreview').textContent = ''; return; }
+    const b = bulkBody(); const first = new Date(b.firstStart);
+    const last = new Date(first.getTime()); last.setDate(last.getDate() + b.everyDays * (b.count - 1));
+    const day = (d) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    $('bPreview').textContent = `Creates ${b.count} contests of ${b.lengthDays} days, starting ${day(first)}${b.count > 1 ? ` through ${day(last)}` : ''}.`;
+  }
+  $('runWeekly').addEventListener('click', () => runPreset('weekly'));
+  $('runMonthly').addEventListener('click', () => runPreset('monthly'));
+  for (const id of ['bKind', 'bFirst', 'bLength', 'bEvery', 'bCount']) $(id).addEventListener('input', preview);
+  $('bSave').addEventListener('click', async () => {
+    try {
+      if (!$('bFirst').value) throw new Error('Set when the first one starts.');
+      const r = await api('/admin/competitions/bulk', { method: 'POST', body: bulkBody() });
+      show($('bMsg'), `Created ${r.created.length} contests. Players see them in the app now.`, true);
+      await load();
+    } catch (err) { if (err.message !== 'auth') show($('bMsg'), err.message, false); }
+  });
+
+  function pickKind(k) {
+    kind = k;
+    document.querySelectorAll('#kinds button').forEach((b) => b.classList.toggle('on', b.dataset.kind === k));
+    if (editing || !data) return;
+    const p = data.presets[k];
+    $('name').value = p.name; $('start').value = toLocalInput(p.startsAt); $('end').value = toLocalInput(p.endsAt);
+  }
+
+  function card(c) {
+    const pct = Math.min(100, Math.round((c.entries / c.maxEntries) * 100));
+    const actions = [];
+    if (c.status === 'upcoming') {
+      actions.push(`<button class="small ghost" data-act="edit" data-id="${c.id}">Edit</button>`);
+      actions.push(`<button class="small danger" data-act="delete" data-id="${c.id}">Delete</button>`);
+    }
+    actions.push(`<button class="small ghost" data-act="copy" data-id="${c.id}">Copy ${c.kind === 'daily' ? 'to next day' : '7 days later'}</button>`);
+    if (c.status !== 'upcoming') actions.push(`<button class="small ghost" data-act="standings" data-id="${c.id}">Standings</button>`);
+    if (c.status === 'ended' && !c.winner) actions.push(`<button class="small" data-act="finalize" data-id="${c.id}">Pick winner</button>`);
+    return `<div class="card contest">
+      <span class="badge ${c.status}">${c.status} · ${c.kind}</span>
+      <h3>${esc(c.name)}</h3>
+      <div class="prize">🏆 ${esc(c.prize)}</div>
+      <div class="muted">${c.prizeType === 'physical' ? 'Physical prize' : 'Gift card'} · ${c.sportLabel ? esc(c.sportLabel) + ' only' : 'All sports'}</div>
+      ${c.prizeDetails ? `<div class="muted">${esc(c.prizeDetails)}</div>` : ''}
+      <div class="bar"><div style="width:${pct}%"></div></div>
+      <div class="muted">${c.entries} / ${c.maxEntries} entered · ${when(c.startsAt)} → ${when(c.endsAt)}</div>
+      ${c.winner ? `<div class="prize" style="margin-top:6px">Winner: ${esc(c.winner)}</div>` : ''}
+      <div id="st-${c.id}"></div>
+      <div id="msg-${c.id}"></div>
+      <div class="actions">${actions.join('')}</div>
+    </div>`;
+  }
+
+  function render() {
+    for (const s of ['upcoming', 'live', 'ended']) {
+      const list = data.competitions.filter((c) => c.status === s);
+      $(s).previousElementSibling.textContent = `${s} (${list.length})`;
+      if (s !== 'ended') list.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+      $(s).innerHTML = list.length ? list.map(card).join('') : '<div class="muted">None</div>';
+    }
+  }
+
+  // ---- Winners and prize claims ----
+  const CLAIM_LABEL = {
+    pending: 'Waiting on winner', submitted: 'Needs review', verified: 'Verified', paid: 'Paid',
+    ineligible: 'Not eligible', rejected: 'Rejected',
+  };
+  let claims = [];
+  // ---- Contact us messages ----
+  const TOPIC = { question: 'Question', problem: 'Problem', prize: 'Prize', idea: 'Idea', other: 'Other' };
+  async function loadMessages() {
+    const r = await api('/admin/messages');
+    const open = r.messages.filter((m) => !m.handled_at).length;
+    $('messages').previousElementSibling.textContent = `Messages (${open} new)`;
+    $('messages').innerHTML = r.messages.length
+      ? r.messages.map((m) => `<div class="card" style="${m.handled_at ? 'opacity:.55' : ''}">
+          <span class="badge ${m.handled_at ? 'ended' : 'live'}">${TOPIC[m.topic] || esc(m.topic)}</span>
+          <div style="white-space:pre-wrap;margin:8px 0">${esc(m.body)}</div>
+          <div class="muted">${esc(m.display_name)} · <a href="mailto:${esc(m.email)}" style="color:inherit">${esc(m.email)}</a> · ${esc(m.phone)} · ${when(new Date(m.created_at).toISOString())}</div>
+          <div class="actions"><button class="small ghost" data-msg="${esc(m.id)}" data-handled="${m.handled_at ? '0' : '1'}">${m.handled_at ? 'Mark new' : 'Mark done'}</button></div>
+        </div>`).join('')
+      : '<div class="muted">No messages yet. Players send these from Contact us in the app menu.</div>';
+  }
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest && e.target.closest('button[data-msg]'); if (!b) return;
+    try { await api(`/admin/messages/${encodeURIComponent(b.dataset.msg)}`, { method: 'PUT', body: { handled: b.dataset.handled === '1' } }); await loadMessages(); }
+    catch {}
+  });
+
+  async function loadClaims() {
+    const r = await api('/admin/claims');
+    claims = r.claims;
+    const warn = r.claimsKeySet ? '' : '<div class="msg err">CLAIMS_KEY is not set on the server, so winners cannot send their details. Add it in Render before any contest ends.</div>';
+    const open = claims.filter((c) => c.status === 'pending' || c.status === 'submitted').length;
+    $('claims').previousElementSibling.textContent = `Winners (${open} open)`;
+    $('claims').innerHTML = warn + (claims.length ? claims.map(claimCard).join('') : '<div class="muted">No winners yet. Tap Pick winner on an ended contest.</div>');
+  }
+  function claimCard(c) {
+    const f = c.form || {};
+    const a = f.address || {};
+    const rows = [];
+    rows.push(['Player', esc(c.display_name)], ['Email', esc(c.email)], ['Phone', esc(c.phone)], ['Lives in', esc(`${c.region}, ${c.country}`)]);
+    if (f.error) rows.push(['Details', esc(f.error)]);
+    else if (c.form) {
+      rows.push(['Legal name', esc(f.legalName)]);
+      rows.push(['Mail to', esc([a.line1, a.line2, `${a.city}, ${a.region} ${a.postalCode}`, a.country].filter(Boolean).join(', '))]);
+      rows.push(['Born', esc(f.birthDate)]);
+      if (f.taxId) rows.push(['Tax ID', `<span class="secret" data-reveal>${esc(f.taxId)}</span> <span class="muted">(tap to show)</span>`]);
+      if (f.skillPassed) rows.push(['Skill question', 'Answered correctly']);
+    }
+    if (c.note) rows.push(['Note', esc(c.note)]);
+    const btn = (status, label, cls = 'ghost') => `<button class="small ${cls}" data-claim="${status}" data-cid="${esc(c.competition_id)}" data-uid="${esc(c.user_id)}">${label}</button>`;
+    const actions = [];
+    if (c.status === 'submitted' || c.status === 'pending') actions.push(btn('verified', 'Mark verified', ''));
+    if (c.status === 'verified') actions.push(btn('paid', 'Mark paid', ''));
+    if (c.status !== 'paid' && c.status !== 'rejected') actions.push(btn('rejected', 'Reject', 'danger'));
+    const badge = { pending: 'upcoming', submitted: 'live', verified: 'live', paid: 'ended', ineligible: 'ended', rejected: 'ended' }[c.status];
+    return `<div class="card contest">
+      <span class="badge ${badge}">${CLAIM_LABEL[c.status] || c.status}</span>
+      <h3>${esc(c.contest)}</h3>
+      <div class="prize">🏆 ${esc(c.prize)}${c.prize_value ? ` · $${c.prize_value}` : ''}</div>
+      <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd style="margin:0">${v}</dd>`).join('')}</dl>
+      ${c.status === 'pending' ? '<div class="muted">The winner fills in their details in the app (contest screen, Claim your prize).</div>' : ''}
+      <div id="cmsg-${esc(c.competition_id)}-${esc(c.user_id)}"></div>
+      <div class="actions">${actions.join('')}</div>
+    </div>`;
+  }
+  document.addEventListener('click', async (e) => {
+    const t = e.target;
+    if (t.dataset && 'reveal' in t.dataset) { t.classList.toggle('shown'); return; }
+    const b = t.closest && t.closest('button[data-claim]'); if (!b) return;
+    const msg = $(`cmsg-${b.dataset.cid}-${b.dataset.uid}`);
+    try {
+      let note;
+      if (b.dataset.claim === 'rejected') {
+        note = prompt('Why is this claim rejected? (saved with the claim)');
+        if (note === null) return;
+      }
+      await api(`/admin/claims/${encodeURIComponent(b.dataset.cid)}/${encodeURIComponent(b.dataset.uid)}`, { method: 'PUT', body: { status: b.dataset.claim, ...(note ? { note } : {}) } });
+      await loadClaims();
+    } catch (err) { if (err.message !== 'auth') show(msg, err.message, false); }
+  });
+
+  function formBody() {
+    return {
+      name: $('name').value, kind, prize: $('prize').value, prizeDetails: $('details').value,
+      maxEntries: Number($('max').value), prizeValue: Number($('value').value) || 0, prizeType: $('ptype').value, sport: $('sport').value || null, startsAt: fromLocalInput($('start').value), endsAt: fromLocalInput($('end').value),
+    };
+  }
+
+  function resetForm() {
+    editing = null; $('formTitle').textContent = 'One contest'; $('saveBtn').textContent = 'Create contest';
+    $('cancelEdit').classList.add('hidden'); $('name').value = ''; $('prize').value = ''; $('details').value = ''; $('max').value = 500; $('value').value = 0; $('ptype').value = 'gift_card'; $('sport').value = '';
+    pickKind(kind);
+  }
+
+  function fillForm(c, shiftMs) {
+    kind = c.kind;
+    document.querySelectorAll('#kinds button').forEach((b) => b.classList.toggle('on', b.dataset.kind === kind));
+    $('name').value = c.name; $('prize').value = c.prize; $('details').value = c.prizeDetails; $('max').value = c.maxEntries; $('value').value = c.prizeValue || 0; $('ptype').value = c.prizeType || 'gift_card'; $('sport').value = c.sport || '';
+    $('start').value = toLocalInput(new Date(Date.parse(c.startsAt) + shiftMs).toISOString());
+    $('end').value = toLocalInput(new Date(Date.parse(c.endsAt) + shiftMs).toISOString());
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function nextPeriodShift(c) {
+    if (c.kind === 'daily') return 86400000;
+    return 7 * 86400000;
+  }
+
+  $('kinds').addEventListener('click', (e) => { const k = e.target.dataset && e.target.dataset.kind; if (k) pickKind(k); });
+  $('saveBtn').addEventListener('click', async () => {
+    try {
+      if (!$('start').value || !$('end').value) throw new Error('Set the start and end.');
+      if (editing) await api(`/admin/competitions/${editing}`, { method: 'PUT', body: formBody() });
+      else await api('/admin/competitions', { method: 'POST', body: formBody() });
+      show($('formMsg'), editing ? 'Saved.' : 'Contest created. Players see it in the app now.', true);
+      resetForm(); await load();
+    } catch (err) { if (err.message !== 'auth') show($('formMsg'), err.message, false); }
+  });
+  $('cancelEdit').addEventListener('click', resetForm);
+  $('logout').addEventListener('click', () => signOut(''));
+
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest && e.target.closest('button[data-act]'); if (!b) return;
+    const c = data.competitions.find((x) => x.id === b.dataset.id); if (!c) return;
+    const msg = $(`msg-${c.id}`);
+    try {
+      if (b.dataset.act === 'edit') {
+        editing = c.id; fillForm(c, 0);
+        $('formTitle').textContent = 'Edit contest'; $('saveBtn').textContent = 'Save changes'; $('cancelEdit').classList.remove('hidden');
+      } else if (b.dataset.act === 'copy') {
+        resetForm(); fillForm(c, nextPeriodShift(c));
+        show($('formMsg'), 'Copied. Check the name and dates, then tap Create contest.', true);
+      } else if (b.dataset.act === 'delete') {
+        if (!confirm(`Delete "${c.name}"?`)) return;
+        await api(`/admin/competitions/${c.id}`, { method: 'DELETE' }); await load();
+      } else if (b.dataset.act === 'finalize') {
+        const r = await api(`/admin/competitions/${c.id}/finalize`, { method: 'POST' });
+        show(msg, r.winner ? `Winner: ${r.winner}. They claim the prize in the app; see Winners above.` : 'No entrants scored, so there is no winner.', true); await load();
+      } else if (b.dataset.act === 'standings') {
+        const r = await api(`/admin/competitions/${c.id}/standings`);
+        $(`st-${c.id}`).innerHTML = r.standings.length
+          ? `<table><tr><th>#</th><th>Player</th><th>Pts</th><th>Refills</th><th>Win %</th><th>W-L</th></tr>${r.standings.map((s) => `<tr><td>${s.rank}</td><td>${esc(s.displayName)}</td><td>${s.score}</td><td>${s.refills}</td><td>${s.wins + s.losses ? Math.round(s.winPct * 100) + '%' : '-'}</td><td>${s.wins}-${s.losses}</td></tr>`).join('')}</table><div class="muted" style="margin-top:6px">Most points wins. Ties go to fewest refills, then best win % (forfeits count as losses, pushes don't count), then most winning picks. If still tied, every tied player wins the full prize.</div>`
+          : '<div class="muted">No entrants yet.</div>';
+      }
+    } catch (err) { if (err.message !== 'auth') show(msg, err.message, false); }
+  });
+
+  $('loginBtn').addEventListener('click', async () => {
+    token = $('pw').value; if (!token) return;
+    try { await load(); try { localStorage.setItem(KEY, token); } catch {} }
+    catch (err) { if (err.message !== 'auth') show($('loginMsg'), err.message, false); }
+  });
+  $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('loginBtn').click(); });
+
+  if (token) load().catch(() => {}); else $('login').classList.remove('hidden');
+})();
+</script>
+</body>
+</html>

@@ -1,162 +1,241 @@
-import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { PickSheet, type PickTarget } from '../../components/PickSheet';
-import { api, API_URL, type Game, type Market, type Selection } from '../../lib/api';
-import { ago, gameTime, signed } from '../../lib/format';
-import { colors, space } from '../../lib/theme';
+// Home screen: browse and join contests, with filters. The server filters,
+// sorts and pages the list, so this stays quick with lots of contests.
 
-const ROWS: { market: Market; label: string; sides: [Selection, Selection] }[] = [
-  { market: 'spread', label: 'Spread', sides: ['away', 'home'] },
-  { market: 'moneyline', label: 'Winner', sides: ['away', 'home'] },
-  { market: 'total', label: 'Total', sides: ['over', 'under'] },
-];
+import Ionicons from '@expo/vector-icons/Ionicons';
+import * as SecureStore from 'expo-secure-store';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Celebration, type CelebrationInfo } from '../../components/Celebration';
+import { ContestCard } from '../../components/ContestCard';
+import { FilterIcon, FilterSheet } from '../../components/FilterSheet';
+import { GameButton } from '../../components/GameButton';
+import { api, ApiError, type Contest } from '../../lib/api';
+import { activeChips, DEFAULT_FILTERS, sortLabel, toQuery, type Filters } from '../../lib/contestFilters';
+import { useContests } from '../../lib/contests';
+import { tap, warn } from '../../lib/haptics';
+import { useSession } from '../../lib/session';
+import { colors, glow, space } from '../../lib/theme';
 
-function cellText(market: Market, selection: Selection, point: number | null, price: number) {
-  if (market === 'moneyline') return signed(price);
-  if (market === 'spread') return `${signed(point ?? 0)}  (${signed(price)})`;
-  return `${selection === 'over' ? 'O' : 'U'} ${point}  (${signed(price)})`;
-}
+const FILTERS_KEY = 'cys.contestFilters';
+const PAGE = 20;
 
-function GameCard({ game, onPick }: { game: Game; onPick: (t: PickTarget) => void }) {
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardHead}>
-        <Text style={styles.time}>{game.locked ? 'Started · picks locked' : gameTime(game.startsAt)}</Text>
-      </View>
-      <View style={styles.teams}>
-        <Text style={styles.team}>{game.awayTeam}</Text>
-        <Text style={styles.at}>at</Text>
-        <Text style={styles.team}>{game.homeTeam}</Text>
-      </View>
-      <View style={styles.row}>
-        <Text style={styles.rowLabel} />
-        <Text style={styles.colHead} numberOfLines={1}>{game.awayTeam}</Text>
-        <Text style={styles.colHead} numberOfLines={1}>{game.homeTeam}</Text>
-      </View>
-      {ROWS.map(({ market, label, sides }) => {
-        const m = game.lines[market];
-        if (!m) return null;
-        return (
-          <View key={market} style={styles.row}>
-            <Text style={styles.rowLabel}>{label}</Text>
-            {sides.map((sel) => {
-              const q = m[sel];
-              return (
-                <Pressable
-                  key={sel}
-                  disabled={!q || game.locked}
-                  style={[styles.cell, (!q || game.locked) && styles.cellOff]}
-                  onPress={() => q && onPick({ game, market, selection: sel, quote: q })}
-                >
-                  <Text style={styles.cellText}>{q ? cellText(market, sel, q.point, q.price) : '-'}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        );
-      })}
-      {Object.keys(game.lines).length === 0 && <Text style={styles.noLines}>Lines coming soon</Text>}
-      <Text style={styles.updated}>Lines updated {ago(game.linesUpdatedAt)}</Text>
-    </View>
-  );
-}
+const JOIN_ERRORS: Record<string, string> = {
+  full: 'That contest just filled up.',
+  ended: 'That contest has ended.',
+  already_joined: "You're already in.",
+};
 
-export default function Games() {
+export default function Contests() {
+  const { token } = useSession();
+  const [list, setList] = useState<Contest[]>([]);
+  const [toClaim, setToClaim] = useState<Contest[]>([]);
   const [sports, setSports] = useState<{ key: string; label: string }[]>([]);
-  const [sport, setSport] = useState<string | null>(null);
-  const [games, setGames] = useState<Game[]>([]);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [target, setTarget] = useState<PickTarget | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [joining, setJoining] = useState<string | null>(null);
+  const [party, setParty] = useState<CelebrationInfo | null>(null);
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [filtersReady, setFiltersReady] = useState(false);
+  const [sheet, setSheet] = useState(false);
+  const contests = useContests();
+  // Ignore answers to older requests when filters change quickly.
+  const seq = useRef(0);
 
+  // Remember the player's filters between visits.
   useEffect(() => {
-    api
-      .sports()
-      .then((s) => {
-        setSports(s);
-        setSport((cur) => cur ?? s[0]?.key ?? null);
-      })
-      .catch(() => setError(`Couldn't reach the server at ${API_URL}. It may be waking up, so pull down to refresh in a minute.`));
+    SecureStore.getItemAsync(FILTERS_KEY)
+      .then((raw) => raw && setFilters({ ...DEFAULT_FILTERS, ...(JSON.parse(raw) as Partial<Filters>) }))
+      .catch(() => {})
+      .finally(() => setFiltersReady(true));
   }, []);
 
+  const applyFilters = (f: Filters) => {
+    setFilters(f);
+    SecureStore.setItemAsync(FILTERS_KEY, JSON.stringify(f)).catch(() => {});
+  };
+
   const load = useCallback(async () => {
-    if (!sport) {
-      if (sports.length === 0) {
-        // Retry the sport list too (e.g. after the server woke up).
-        api.sports().then((s) => { setSports(s); setSport(s[0]?.key ?? null); setError(null); }).catch(() => {});
-      }
-      return;
-    }
+    const mine = ++seq.current;
     setLoading(true);
+    try {
+      const page = await api.contests(token, { ...toQuery(filters), limit: PAGE });
+      if (mine !== seq.current) return;
+      setList(page.competitions);
+      setToClaim(page.toClaim ?? []);
+      setSports(page.sports ?? []);
+      setNextOffset(page.nextOffset);
+      void contests.refresh();
+      setError(null);
+    } catch {
+      if (mine === seq.current) setError("Couldn't load contests. Pull down to try again.");
+    } finally {
+      if (mine === seq.current) setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, filters]);
+
+  async function loadMore() {
+    if (nextOffset === null || loadingMore || loading) return;
+    const mine = seq.current;
+    setLoadingMore(true);
+    try {
+      const page = await api.contests(token, { ...toQuery(filters), limit: PAGE, offset: nextOffset });
+      if (mine !== seq.current) return;
+      setList((l) => [...l, ...page.competitions.filter((c) => !l.some((x) => x.id === c.id))]);
+      setNextOffset(page.nextOffset);
+    } catch {
+      // Scrolling again retries.
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  useFocusEffect(
+    useCallback(() => {
+      if (filtersReady) void load();
+    }, [load, filtersReady]),
+  );
+
+  async function join(c: Contest) {
+    if (!token) return;
+    setJoining(c.id);
     setError(null);
     try {
-      setGames((await api.lines(sport)).events);
-    } catch {
-      setError('Could not load games.');
+      await api.joinContest(token, c.id);
+      if (c.status === 'live') contests.setActive(c.id);
+      setParty({ title: "YOU'RE IN!", subtitle: c.status === 'live' ? `${c.name} · now playing` : c.name, color: colors.neon });
+    } catch (err) {
+      warn();
+      setError(err instanceof ApiError ? JOIN_ERRORS[err.code] ?? 'Something went wrong.' : 'Could not reach the server.');
     } finally {
-      setLoading(false);
+      setJoining(null);
+      await load();
     }
-  }, [sport, sports.length]);
+  }
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const sportLabel = (key: string) => sports.find((s) => s.key === key)?.label ?? key;
+  const chips = activeChips(filters, sportLabel);
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsInner}>
-        {sports.map((s) => (
-          <Pressable key={s.key} onPress={() => setSport(s.key)} style={[styles.sport, sport === s.key && styles.sportOn]}>
-            <Text style={[styles.sportText, sport === s.key && styles.sportTextOn]}>{s.label}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-      {toast && <Text style={styles.toast}>{toast}</Text>}
       <FlatList
-        data={games}
-        keyExtractor={(g) => g.id}
-        contentContainerStyle={{ padding: space.lg, gap: space.md }}
+        data={list}
+        keyExtractor={(c) => c.id}
+        contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: 40 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
-        renderItem={({ item }) => <GameCard game={item} onPick={setTarget} />}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListHeaderComponent={
+          <View style={{ gap: space.sm }}>
+            <Text style={[styles.h1, glow(colors.pink, 14)]}>CONTESTS</Text>
+            <Text style={styles.sub}>Free to join, as many as you like. Each contest starts you at 0 points with your own 5 refills a day.</Text>
+
+            {toClaim.map((c) => (
+              <GameButton key={c.id} title={`You won ${c.prize}! Claim it`} variant="primary" icon="gift" heavy onPress={() => router.push(`/claim/${c.id}`)} />
+            ))}
+
+            <View style={styles.bar}>
+              <Pressable
+                onPress={() => {
+                  tap();
+                  setSheet(true);
+                }}
+                style={[styles.barBtn, chips.length > 0 && { borderColor: colors.neon }]}
+                accessibilityRole="button"
+                accessibilityLabel={`Filters${chips.length ? `, ${chips.length} on` : ''}`}
+              >
+                <FilterIcon count={chips.length} />
+                <Text style={styles.barText}>Filters</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  tap();
+                  setSheet(true);
+                }}
+                style={styles.barBtn}
+                accessibilityRole="button"
+                accessibilityLabel={`Sorted by ${sortLabel(filters)}`}
+              >
+                <Ionicons name="swap-vertical" size={18} color={colors.text} />
+                <Text style={styles.barText}>{sortLabel(filters)}</Text>
+              </Pressable>
+            </View>
+
+            {chips.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm }} style={{ flexGrow: 0, flexShrink: 0 }}>
+                {chips.map((c) => (
+                  <Pressable
+                    key={c.key}
+                    onPress={() => {
+                      tap();
+                      applyFilters({ ...filters, [c.key]: DEFAULT_FILTERS[c.key] });
+                    }}
+                    style={styles.chip}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove filter ${c.text}`}
+                  >
+                    <Text style={styles.chipText}>{c.text}</Text>
+                    <Ionicons name="close" size={14} color="#022A30" />
+                  </Pressable>
+                ))}
+                <Pressable onPress={() => applyFilters({ ...DEFAULT_FILTERS, sort: filters.sort })} style={styles.clear} accessibilityRole="button">
+                  <Text style={styles.clearText}>Clear all</Text>
+                </Pressable>
+              </ScrollView>
+            )}
+            {error && <Text style={styles.error}>{error}</Text>}
+          </View>
+        }
+        renderItem={({ item }) => <ContestCard c={item} onJoin={join} joining={joining === item.id} />}
         ListEmptyComponent={
-          <Text style={styles.empty}>{error ?? (loading ? '' : 'No upcoming games right now. Check back soon.')}</Text>
+          loading ? undefined : chips.length ? (
+            <View style={{ alignItems: 'center', gap: space.md, marginTop: 30 }}>
+              <Text style={styles.empty}>No contests match these filters.</Text>
+              <GameButton title="Clear filters" variant="ghost" size="sm" icon="close-circle" onPress={() => applyFilters({ ...DEFAULT_FILTERS, sort: filters.sort })} />
+            </View>
+          ) : (
+            <Text style={styles.empty}>No contests right now. New ones are added every day, so check back soon.</Text>
+          )
+        }
+        ListFooterComponent={
+          <View>
+            {loadingMore && <ActivityIndicator color={colors.accent} style={{ marginVertical: space.lg }} />}
+            <Text style={styles.fine} onPress={() => router.push('/howto')}>
+              Prizes are fixed and announced before each contest starts. No purchase necessary. <Text style={{ textDecorationLine: 'underline' }}>How to play</Text>
+            </Text>
+          </View>
         }
       />
-      <PickSheet
-        target={target}
-        onClose={() => setTarget(null)}
-        onPlaced={() => {
-          setTarget(null);
-          setToast('Pick locked in. Good luck!');
-          setTimeout(() => setToast(null), 2500);
-        }}
-      />
+      <FilterSheet open={sheet} value={filters} sports={sports} onApply={applyFilters} onClose={() => setSheet(false)} />
+      <Celebration info={party} onDone={() => setParty(null)} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  tabs: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: colors.border },
-  tabsInner: { paddingHorizontal: space.lg, paddingVertical: space.sm, gap: space.sm },
-  sport: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.card },
-  sportOn: { backgroundColor: colors.accent },
-  sportText: { color: colors.text, fontWeight: '600' },
-  sportTextOn: { color: colors.accentText },
-  card: { backgroundColor: colors.card, borderRadius: 16, padding: space.lg, gap: space.sm },
-  cardHead: { flexDirection: 'row', justifyContent: 'space-between' },
-  time: { color: colors.muted, fontSize: 13 },
-  teams: { marginBottom: space.sm },
-  team: { color: colors.text, fontSize: 17, fontWeight: '700' },
-  at: { color: colors.muted, fontSize: 12 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  rowLabel: { color: colors.muted, width: 56, fontSize: 13 },
-  colHead: { flex: 1, color: colors.muted, fontSize: 11, textAlign: 'center' },
-  cell: { flex: 1, backgroundColor: colors.cardAlt, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
-  cellOff: { opacity: 0.4 },
-  cellText: { color: colors.text, fontWeight: '600', fontSize: 13 },
-  noLines: { color: colors.muted, fontStyle: 'italic' },
-  updated: { color: colors.muted, fontSize: 11, marginTop: space.xs },
-  empty: { color: colors.muted, textAlign: 'center', marginTop: 60 },
-  toast: { backgroundColor: colors.win, color: '#04140A', textAlign: 'center', padding: space.sm, fontWeight: '700' },
+  h1: { color: colors.pink, fontSize: 30, fontWeight: '900', letterSpacing: 2 },
+  sub: { color: colors.muted, lineHeight: 19 },
+  bar: { flexDirection: 'row', gap: space.sm, marginTop: space.sm },
+  barBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  barText: { color: colors.text, fontWeight: '800' },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.neon, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
+  chipText: { color: '#022A30', fontWeight: '800', fontSize: 13 },
+  clear: { justifyContent: 'center', paddingHorizontal: 8 },
+  clearText: { color: colors.neon, fontWeight: '800', fontSize: 13, textDecorationLine: 'underline' },
+  error: { color: colors.loss, fontWeight: '700' },
+  empty: { color: colors.muted, textAlign: 'center', marginTop: 40 },
+  fine: { color: colors.muted, fontSize: 12, textAlign: 'center', marginTop: space.lg },
 });
