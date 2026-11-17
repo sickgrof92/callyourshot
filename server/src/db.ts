@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS users (
   -- Where they live (US state or Canadian province). Quebec is not eligible.
   country       TEXT,
   region        TEXT,
+  -- Date of birth (YYYY-MM-DD), checked against the age of majority at sign-up.
+  birth_date    TEXT,
   -- When they agreed to the Official Rules and Privacy Policy, and which version.
   terms_accepted_at INTEGER,
   terms_version TEXT,
@@ -231,6 +233,7 @@ function migrate(db: DB): void {
       db.exec("ALTER TABLE competitions ADD COLUMN prize_type TEXT NOT NULL DEFAULT 'gift_card' CHECK (prize_type IN ('gift_card','physical'))");
     }
     if (!comp.includes('sport')) db.exec('ALTER TABLE competitions ADD COLUMN sport TEXT');
+    if (!colsOf('users').includes('birth_date')) db.exec('ALTER TABLE users ADD COLUMN birth_date TEXT');
     return;
   }
   db.exec('PRAGMA foreign_keys = OFF');

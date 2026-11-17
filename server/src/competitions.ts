@@ -311,10 +311,6 @@ export function bulkCreate(db: DB, cfg: Config, input: BulkInput, now: number): 
 
 // ---- Browsing contests (the app's Contests screen) -------------------------
 
-/** Size buckets by entry cap. */
-export const SIZES = { small: [1, 100], medium: [101, 1000], large: [1001, Number.MAX_SAFE_INTEGER] } as const;
-/** Length buckets in days, [from, to). Wide enough that DST changes don't matter. */
-export const LENGTHS = { day: [0, 1.5], week: [1.5, 10], month: [10, 400] } as const;
 export const SORTS = ['soonest', 'popular', 'ending'] as const;
 
 export interface ContestFilter {
@@ -323,8 +319,12 @@ export interface ContestFilter {
   sport?: string;
   /** Contests open to every sport match any sport filter too. */
   prizeType?: PrizeType;
-  size?: keyof typeof SIZES;
-  length?: keyof typeof LENGTHS;
+  /** Entry cap (max players) range, inclusive. */
+  sizeMin?: number;
+  sizeMax?: number;
+  /** Length in whole days, inclusive. No lengthMax means no upper limit. */
+  lengthMin?: number;
+  lengthMax?: number;
   /** Start time window (epoch ms). */
   startFrom?: number;
   startTo?: number;
@@ -367,15 +367,22 @@ export function browseContests(db: DB, f: ContestFilter, now: number, userId: st
     where.push('c.prize_type = ?');
     args.push(f.prizeType);
   }
-  if (f.size) {
-    const [lo, hi] = SIZES[f.size];
-    where.push('c.max_entries BETWEEN ? AND ?');
-    args.push(lo, hi);
+  if (f.sizeMin !== undefined) {
+    where.push('c.max_entries >= ?');
+    args.push(f.sizeMin);
   }
-  if (f.length) {
-    const [lo, hi] = LENGTHS[f.length];
-    where.push('(c.ends_at - c.starts_at) >= ? AND (c.ends_at - c.starts_at) < ?');
-    args.push(Math.round(lo * DAY), Math.round(hi * DAY));
+  if (f.sizeMax !== undefined) {
+    where.push('c.max_entries <= ?');
+    args.push(f.sizeMax);
+  }
+  // Half a day of slack either side, so a 7-day contest across a DST change still counts as 7 days.
+  if (f.lengthMin !== undefined) {
+    where.push('(c.ends_at - c.starts_at) >= ?');
+    args.push(Math.round((f.lengthMin - 0.5) * DAY));
+  }
+  if (f.lengthMax !== undefined) {
+    where.push('(c.ends_at - c.starts_at) <= ?');
+    args.push(Math.round((f.lengthMax + 0.5) * DAY));
   }
   if (f.startFrom !== undefined) {
     where.push('c.starts_at >= ?');

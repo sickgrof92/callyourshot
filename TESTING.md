@@ -84,7 +84,7 @@ The message shows the address the app is trying. If it says `http://localhost:80
 
 First, create a contest or two on the admin page (`https://your-url.onrender.com/admin`, password is your `ADMIN_TOKEN`). "7-day contests, one starting each day" sets up a week of them at once. Contests have to be created before they start, so the first ones open tomorrow; for a quick test, make one that starts a few minutes from now.
 
-1. Tap **Continue with Apple** or **Continue with Google**. In test mode no real sign-in happens; your account is tied to the phone. Fill in a display name, email, phone, and state or province, and tick the agreement.
+1. Tap **Continue with Apple** or **Continue with Google**. In test mode no real sign-in happens; your account is tied to the phone. Fill in a display name, email, phone, state or province and date of birth, and tick the agreement.
 2. On **Contests**, tap **Join free** on a live contest. Each contest starts you at 0. The strip at the top of Games and Points shows which contest you're playing; tap another to switch.
 3. On the **Points** tab, tap **Watch video for 10 points**. In test mode a fake 5-second video plays instead of a real ad.
 4. Go to **Games**, pick a sport, and tap a line. Tap **Watch ad to confirm pick**, let the ad finish, then tap **Confirm pick**.

@@ -53,6 +53,7 @@ export default function Claim() {
       .then((i) => {
         setInfo(i);
         setRegion(i.region);
+        if (i.birthDate) setBirth(i.birthDate);
       })
       .catch(() => setError("Couldn't load your claim."));
   }, [token, id]);

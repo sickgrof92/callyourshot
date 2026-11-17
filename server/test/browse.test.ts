@@ -39,18 +39,20 @@ describe('browsing contests', () => {
 
     const names = async (qs: string) => (await list(qs)).competitions.map((c) => c.name).sort();
     expect(await names('')).toHaveLength(5);
-    expect(await names('?size=small')).toEqual(['Small daily']);
-    expect(await names('?size=large')).toEqual(['Big weekly']);
-    expect(await names('?size=medium')).toEqual(['NBA weekly', 'NHL weekly', 'TV monthly']);
-    expect(await names('?length=day')).toEqual(['Small daily']);
-    expect(await names('?length=week')).toEqual(['Big weekly', 'NBA weekly', 'NHL weekly']);
-    expect(await names('?length=month')).toEqual(['TV monthly']);
+    expect(await names('?sizeMax=100')).toEqual(['Small daily']);
+    expect(await names('?sizeMin=1001')).toEqual(['Big weekly']);
+    expect(await names('?sizeMin=101&sizeMax=1000')).toEqual(['NBA weekly', 'NHL weekly', 'TV monthly']);
+    expect(await names('?sizeMin=500&sizeMax=500')).toEqual(['NBA weekly', 'NHL weekly']);
+    expect(await names('?lengthMax=1')).toEqual(['Small daily']);
+    expect(await names('?lengthMin=2&lengthMax=7')).toEqual(['Big weekly', 'NBA weekly', 'NHL weekly']);
+    expect(await names('?lengthMin=7&lengthMax=7')).toEqual(['Big weekly', 'NBA weekly', 'NHL weekly']);
+    expect(await names('?lengthMin=30')).toEqual(['TV monthly']);
     expect(await names('?prizeType=physical')).toEqual(['TV monthly']);
     // A sport shows its own contests plus the ones open to every sport.
     expect(await names('?sport=basketball_nba')).toEqual(['Big weekly', 'NBA weekly', 'Small daily', 'TV monthly']);
     expect(await names('?sport=any')).toEqual(['Big weekly', 'Small daily', 'TV monthly']);
     expect(await names(`?startFrom=${encodeURIComponent(iso(et(2026, 11, 22, 0)))}&startTo=${encodeURIComponent(iso(et(2026, 11, 23, 0)))}`)).toEqual(['Big weekly']);
-    expect(await names('?size=medium&length=week&sport=icehockey_nhl')).toEqual(['NHL weekly']);
+    expect(await names('?sizeMin=101&sizeMax=1000&lengthMin=7&lengthMax=7&sport=icehockey_nhl')).toEqual(['NHL weekly']);
 
     const page1 = await list('?limit=2');
     expect(page1.competitions).toHaveLength(2);
@@ -73,7 +75,7 @@ describe('browsing contests', () => {
     setClock(et(2026, 11, 22, 12));
     expect((await list('?status=live')).competitions.map((c) => c.name)).toEqual(['Sooner']);
     expect((await list('?status=upcoming')).competitions.map((c) => c.name)).toEqual(['Later']);
-    expect((await app.inject({ method: 'GET', url: '/competitions?size=huge' })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/competitions?sizeMin=lots' })).statusCode).toBe(400);
   });
 
   it('only takes picks on the contest sport', async () => {

@@ -1,13 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   DEFAULT_FILTERS,
-  LENGTH_OPTIONS,
+  LENGTH_MAX,
+  LENGTH_MIN,
+  lengthText,
   PRIZE_OPTIONS,
   SHOW_OPTIONS,
-  SIZE_OPTIONS,
   SORT_OPTIONS,
   STARTS_OPTIONS,
   type Filters,
@@ -15,6 +16,7 @@ import {
 import { tap } from '../lib/haptics';
 import { colors, space } from '../lib/theme';
 import { GameButton } from './GameButton';
+import { RangeSlider } from './RangeSlider';
 
 function Group<T extends string>({ title, options, value, onPick }: { title: string; options: [T, string][]; value: T; onPick: (v: T) => void }) {
   return (
@@ -79,8 +81,59 @@ export function FilterSheet({
           <Group title="SHOW" options={SHOW_OPTIONS} value={draft.show} onPick={set('show')} />
           <Group title="SPORT" options={sportOptions} value={draft.sport} onPick={set('sport')} />
           <Group title="STARTS" options={STARTS_OPTIONS} value={draft.starts} onPick={set('starts')} />
-          <Group title="LENGTH" options={LENGTH_OPTIONS} value={draft.length} onPick={set('length')} />
-          <Group title="SIZE (MAX PLAYERS)" options={SIZE_OPTIONS} value={draft.size} onPick={set('size')} />
+          <View style={{ gap: space.sm }}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.groupTitle}>LENGTH</Text>
+              <Text style={styles.value}>
+                {draft.lengthMin === LENGTH_MIN && draft.lengthMax === LENGTH_MAX
+                  ? 'Any length'
+                  : draft.lengthMin === draft.lengthMax
+                    ? lengthText(draft.lengthMin)
+                    : `${draft.lengthMin} to ${lengthText(draft.lengthMax)}`}
+              </Text>
+            </View>
+            <RangeSlider
+              min={LENGTH_MIN}
+              max={LENGTH_MAX}
+              low={draft.lengthMin}
+              high={draft.lengthMax}
+              onChange={(lo, hi) => setDraft((d) => ({ ...d, lengthMin: lo, lengthMax: hi }))}
+              accessibilityLabel="Contest length in days"
+            />
+            <View style={styles.rowBetween}>
+              <Text style={styles.scale}>1 day</Text>
+              <Text style={styles.scale}>30+ days</Text>
+            </View>
+          </View>
+          <View style={{ gap: space.sm }}>
+            <Text style={styles.groupTitle}>SIZE (MAX PLAYERS)</Text>
+            <View style={styles.sizeRow}>
+              <TextInput
+                value={draft.sizeMin}
+                onChangeText={(t) => setDraft((d) => ({ ...d, sizeMin: t.replace(/\D/g, '') }))}
+                keyboardType="number-pad"
+                placeholder="Min"
+                placeholderTextColor={colors.muted}
+                style={styles.num}
+                maxLength={7}
+                accessibilityLabel="Minimum players"
+              />
+              <Text style={styles.to}>to</Text>
+              <TextInput
+                value={draft.sizeMax}
+                onChangeText={(t) => setDraft((d) => ({ ...d, sizeMax: t.replace(/\D/g, '') }))}
+                keyboardType="number-pad"
+                placeholder="Max"
+                placeholderTextColor={colors.muted}
+                style={styles.num}
+                maxLength={7}
+                accessibilityLabel="Maximum players"
+              />
+            </View>
+            {!!draft.sizeMin && !!draft.sizeMax && Number(draft.sizeMin) > Number(draft.sizeMax) && (
+              <Text style={styles.warn}>Min is bigger than max, so nothing will match.</Text>
+            )}
+          </View>
           <Group title="PRIZE" options={PRIZE_OPTIONS} value={draft.prizeType} onPick={set('prizeType')} />
         </ScrollView>
         <GameButton
@@ -127,6 +180,25 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: colors.text, fontSize: 20, fontWeight: '900' },
   reset: { color: colors.neon, fontWeight: '800' },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  value: { color: colors.neon, fontWeight: '900' },
+  scale: { color: colors.muted, fontSize: 12, fontWeight: '700' },
+  sizeRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  num: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: colors.bg,
+    color: colors.text,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.border,
+    paddingHorizontal: space.md,
+    paddingVertical: 10,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  to: { color: colors.muted, fontWeight: '800' },
+  warn: { color: colors.loss, fontWeight: '700', fontSize: 13 },
   groupTitle: { color: colors.muted, fontWeight: '900', letterSpacing: 1.5, fontSize: 12 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   chip: { borderWidth: 2, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },

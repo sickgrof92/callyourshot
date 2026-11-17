@@ -72,8 +72,10 @@ export interface ContestQuery {
   status?: 'open' | 'live' | 'upcoming' | 'mine';
   sport?: string;
   prizeType?: PrizeType;
-  size?: 'small' | 'medium' | 'large';
-  length?: 'day' | 'week' | 'month';
+  sizeMin?: number;
+  sizeMax?: number;
+  lengthMin?: number;
+  lengthMax?: number;
   startFrom?: string;
   startTo?: string;
   sort?: 'soonest' | 'popular' | 'ending';
@@ -134,6 +136,8 @@ export interface ClaimInfo {
   prize: string;
   country: 'US' | 'CA';
   region: string;
+  /** From sign-up, to prefill the claim form. */
+  birthDate: string | null;
   needsTaxId: boolean;
   skillQuestion: string | null;
 }
@@ -189,7 +193,7 @@ async function request<T>(path: string, opts: { method?: string; body?: unknown;
 
 export const api = {
   authConfig: () => request<{ mode: 'stub' | 'live' }>('/auth/config'),
-  signIn: (body: { provider: 'apple' | 'google'; idToken: string; profile?: { displayName: string; email: string; phone: string; country: 'US' | 'CA'; region: string; acceptedTerms: true } }) =>
+  signIn: (body: { provider: 'apple' | 'google'; idToken: string; profile?: { displayName: string; email: string; phone: string; country: 'US' | 'CA'; region: string; birthDate: string; acceptedTerms: true } }) =>
     request<{ token: string; user: { id: string; displayName: string } } | { needsProfile: true; email: string | null }>('/auth/signin', {
       method: 'POST',
       body,

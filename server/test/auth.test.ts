@@ -11,6 +11,7 @@ const profile = (over: object = {}) => ({
   phone: '(555) 123-4567',
   country: 'US',
   region: 'NY',
+  birthDate: '1990-05-17',
   acceptedTerms: true,
   ...over,
 });
@@ -70,6 +71,23 @@ describe('sign-in', () => {
     expect((await go({ country: 'MX', region: 'JA' })).statusCode).toBe(400);
     expect((await go({ acceptedTerms: false })).statusCode).toBe(400);
     expect((await go({ country: 'CA', region: 'on' })).statusCode).toBe(200);
+  });
+
+  it('needs a real birth date and the age of majority where the player lives', async () => {
+    const app = buildApp({ db: testDb(), cfg: testConfig(), clock: () => Date.UTC(2026, 10, 17, 17) });
+    let n = 0;
+    const go = (over: object) => signin(app, { provider: 'apple', idToken: `stub-agecheck${++n}`, profile: profile({ displayName: `p${n}x`, email: `p${n}@example.com`, phone: `555-010-${String(1000 + n)}`, ...over }) });
+    expect((await go({ birthDate: '' })).statusCode).toBe(400);
+    expect((await go({ birthDate: '2001-02-30' })).json().error).toBe('bad_birth_date');
+    // Turned 18 yesterday: fine in New York and Ontario, too young in British Columbia (19) and Mississippi (21).
+    expect((await go({ birthDate: '2008-11-16' })).statusCode).toBe(200);
+    expect((await go({ birthDate: '2008-11-16', country: 'CA', region: 'ON' })).statusCode).toBe(200);
+    const bc = await go({ birthDate: '2008-11-16', country: 'CA', region: 'BC' });
+    expect(bc.statusCode).toBe(403);
+    expect(bc.json()).toEqual({ error: 'under_age', minimumAge: 19 });
+    expect((await go({ birthDate: '2006-11-16', region: 'MS' })).json()).toEqual({ error: 'under_age', minimumAge: 21 });
+    // Turns 18 tomorrow.
+    expect((await go({ birthDate: '2008-11-18' })).json().error).toBe('under_age');
   });
 
   it('has no guest sign-up any more', async () => {

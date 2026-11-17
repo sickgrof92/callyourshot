@@ -21,6 +21,7 @@ const PROFILE_ERRORS: Record<string, string> = {
   taken: 'That name, email or phone is already in use.',
   region_not_eligible: 'Sorry, contests are not open to residents of Quebec.',
   bad_region: 'Choose your state or province.',
+  bad_birth_date: 'Enter your real date of birth.',
 };
 
 const FIELD_ERRORS: Record<string, string> = {
@@ -30,10 +31,15 @@ const FIELD_ERRORS: Record<string, string> = {
   region: PROFILE_ERRORS.bad_region,
   country: PROFILE_ERRORS.bad_region,
   acceptedTerms: 'Tick the box to agree to the rules.',
+  birthDate: PROFILE_ERRORS.bad_birth_date,
 };
 
 /** Say what actually went wrong, so a server problem isn't shown as a bad name. */
 function profileError(err: ApiError): string {
+  if (err.code === 'under_age') {
+    const min = Number(err.body.minimumAge) || 18;
+    return `Sorry, you need to be ${min} or older to play where you live.`;
+  }
   if (PROFILE_ERRORS[err.code]) return PROFILE_ERRORS[err.code];
   if (err.code === 'bad_request') {
     const issues = (err.body.details ?? []) as { path?: (string | number)[] }[];
@@ -41,6 +47,15 @@ function profileError(err: ApiError): string {
     if (field) return FIELD_ERRORS[field];
   }
   return `Sign-up didn't work (${err.code}, ${err.status}). Try again, or make sure the app and server are both up to date.`;
+}
+
+/** "YYYY-MM-DD" if the three boxes make a real date, else null. */
+function isoDate(y: string, m: string, d: string): string | null {
+  if (y.length !== 4 || !m || !d) return null;
+  const [yy, mm, dd] = [Number(y), Number(m), Number(d)];
+  const date = new Date(Date.UTC(yy, mm - 1, dd));
+  if (date.getUTCFullYear() !== yy || date.getUTCMonth() !== mm - 1 || date.getUTCDate() !== dd || yy < 1900) return null;
+  return `${y}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
 }
 
 const unreachable = `Couldn't reach the server at ${API_URL}. It may be waking up, so try again in a minute. If this address isn't your Render URL, see "Troubleshooting" in TESTING.md.`;
@@ -58,6 +73,10 @@ export default function Welcome() {
   const [country, setCountry] = useState<Country>('US');
   const [region, setRegion] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
+  const [bMonth, setBMonth] = useState('');
+  const [bDay, setBDay] = useState('');
+  const [bYear, setBYear] = useState('');
+  const birthDate = isoDate(bYear, bMonth, bDay);
   const blocked = !!region && NOT_ELIGIBLE.has(`${country}:${region}`);
 
   useEffect(() => {
@@ -100,7 +119,7 @@ export default function Welcome() {
     setBusy('profile');
     setError(null);
     try {
-      const res = await api.signIn({ ...pending, profile: { displayName: name.trim(), email: email.trim(), phone: phone.trim(), country, region: region ?? '', acceptedTerms: true } });
+      const res = await api.signIn({ ...pending, profile: { displayName: name.trim(), email: email.trim(), phone: phone.trim(), country, region: region ?? '', birthDate: birthDate ?? '', acceptedTerms: true } });
       if ('token' in res) {
         await signedIn(res.token);
         router.replace('/');
@@ -118,7 +137,7 @@ export default function Welcome() {
     }
   }
 
-  const canFinish = name.trim().length >= 3 && email.includes('@') && phone.replace(/\D/g, '').length >= 10 && !!region && !blocked && agreed;
+  const canFinish = name.trim().length >= 3 && email.includes('@') && phone.replace(/\D/g, '').length >= 10 && !!region && !blocked && !!birthDate && agreed;
 
   return (
     <KeyboardAvoidingView style={styles.wrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -196,6 +215,13 @@ export default function Welcome() {
               }}
             />
             {blocked && <Text style={styles.error}>Sorry, contests are not open to residents of Quebec.</Text>}
+            <Text style={styles.label}>Date of birth</Text>
+            <View style={styles.dobRow}>
+              <TextInput value={bMonth} onChangeText={(t) => setBMonth(t.replace(/\D/g, ''))} keyboardType="number-pad" maxLength={2} placeholder="MM" placeholderTextColor={colors.muted} style={[styles.input, styles.dob]} accessibilityLabel="Birth month" />
+              <TextInput value={bDay} onChangeText={(t) => setBDay(t.replace(/\D/g, ''))} keyboardType="number-pad" maxLength={2} placeholder="DD" placeholderTextColor={colors.muted} style={[styles.input, styles.dob]} accessibilityLabel="Birth day" />
+              <TextInput value={bYear} onChangeText={(t) => setBYear(t.replace(/\D/g, ''))} keyboardType="number-pad" maxLength={4} placeholder="YYYY" placeholderTextColor={colors.muted} style={[styles.input, styles.dob, { flex: 1.5 }]} accessibilityLabel="Birth year" />
+            </View>
+            <Text style={styles.hint}>Use your real birthday. Winners verify it with ID before getting a prize.</Text>
             <Pressable
               style={styles.agree}
               onPress={() => {
@@ -205,7 +231,7 @@ export default function Welcome() {
             >
               <Ionicons name={agreed ? 'checkbox' : 'square-outline'} size={26} color={agreed ? colors.win : colors.muted} />
               <Text style={styles.agreeText}>
-                I'm at least 18 (or the age of majority where I live), I live in the US or Canada (not Quebec), and I agree to the{' '}
+                My details are real, I live in the US or Canada (not Quebec), and I agree to the{' '}
                 <Text style={styles.link} onPress={openRules}>
                   Official Rules
                 </Text>{' '}
@@ -242,6 +268,9 @@ const styles = StyleSheet.create({
   input: { backgroundColor: colors.card, color: colors.text, borderRadius: 14, padding: space.md, fontSize: 18, borderWidth: 2, borderColor: colors.border },
   error: { color: colors.loss, fontWeight: '700', textAlign: 'center' },
   fine: { color: colors.muted, fontSize: 12, textAlign: 'center', marginTop: space.lg },
+  dobRow: { flexDirection: 'row', gap: space.sm },
+  dob: { flex: 1, minWidth: 0, textAlign: 'center' },
+  hint: { color: colors.muted, fontSize: 12 },
   agree: { flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', marginVertical: space.sm },
   agreeText: { color: colors.text, flex: 1, lineHeight: 20 },
   link: { color: colors.neon, textDecorationLine: 'underline', fontWeight: '700' },

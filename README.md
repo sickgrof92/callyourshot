@@ -35,13 +35,18 @@ These are enforced in code, not just policy:
 
 **Winners.** After a contest ends and its picks are graded, the admin taps **Pick winner**. Each winner sees **Claim your prize** in the app and enters their legal name, mailing address and date of birth (plus a tax ID for US prizes worth $600 or more, and a math skill-testing question in Canada). The server checks the age of majority for their state or province and stores the details encrypted, apart from the profile (`server/src/claims.ts`). Only the admin page shows them.
 
-**Accounts.** Players sign in with Apple or Google and give a display name, email, phone, and state or province, and agree to the rules. Each email and phone can only be on one account (Gmail dots and +tags count as the same address). Phone verification by text isn't on yet; the `phone_verified_at` column is ready for it.
+**Accounts.** Players sign in with Apple or Google and give a display name, email, phone, state or province and date of birth, and agree to the rules. The server refuses anyone under the age of majority where they live (18 in most places, 19 in AL, NE and six provinces and territories, 21 in MS). Each email and phone can only be on one account (Gmail dots and +tags count as the same address). Phone verification by text isn't on yet; the `phone_verified_at` column is ready for it.
 
-**Browsing contests.** Contests is the home screen. Players filter by sport, start time, length, size (max players) and prize type, and sort by starting soonest, most players or ending soonest. The server filters, sorts and pages the list (`GET /competitions`, 20 at a time), so it stays quick with many contests. Picking a sport also shows contests open to every sport. Filters are remembered on the phone.
+**Browsing contests.** Contests is the home screen. Players filter by sport, start time, length (a 1 to 30+ day slider), size (min and max players, typed in) and prize type, and sort by starting soonest, most players or ending soonest. The server filters, sorts and pages the list (`GET /competitions`, 20 at a time), so it stays quick with many contests. Picking a sport also shows contests open to every sport. Filters are remembered on the phone.
 
 **Menu.** The ☰ button on every tab opens: Contests, My profile & stats, My picks, Notification settings, How to play & FAQ, Rules, Privacy policy, Contact us, Delete my account and Sign out.
 
 **Deleting an account** (menu > Delete my account, then type DELETE) removes the player's sign-in, contact details, picks, points, contest entries, profile, messages and any unpaid prize claim (`server/src/account.ts`). A prize that was already paid keeps its claim record for tax purposes; the account row behind it is cleared of everything personal. The privacy policy should say this.
+
+**Possible duplicates.** The admin page flags, but never blocks, likely duplicate people (`server/src/duplicates.ts`):
+- accounts with the same birth date and state plus a similar email or display name (for example mike.r@gmail.com and miker77@yahoo.com, or hoops_mike and hoops_mike2);
+- prize claims on different accounts with the same legal name, birth date and state;
+- a prize claim whose birth date differs from the one given at sign-up.
 
 **Profiles.** Tapping a name on a board shows that player's record (W-L-T, forfeits as losses and pushes as ties), win %, longest win streak, reloads and contests won. Never their email, phone or location.
 

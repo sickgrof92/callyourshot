@@ -78,13 +78,15 @@ export function claimInfo(db: DB, competitionId: string, userId: string) {
   const claim = getClaim(db, competitionId, userId);
   if (!claim) return null;
   const c = db.prepare('SELECT prize, prize_value FROM competitions WHERE id = ?').get(competitionId) as { prize: string; prize_value: number };
-  const u = db.prepare('SELECT country, region FROM users WHERE id = ?').get(userId) as { country: Country; region: string };
+  const u = db.prepare('SELECT country, region, birth_date FROM users WHERE id = ?').get(userId) as { country: Country; region: string; birth_date: string | null };
   return {
     status: claim.status,
     note: claim.note,
     prize: c.prize,
     country: u.country,
     region: u.region,
+    /** From sign-up, to prefill the form. */
+    birthDate: u.birth_date,
     needsTaxId: u.country === 'US' && c.prize_value >= TAX_ID_THRESHOLD,
     skillQuestion: u.country === 'CA' ? skillQuestion(competitionId).text : null,
   };

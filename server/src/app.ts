@@ -6,7 +6,8 @@ import { AD_PURPOSES, adEligibility, createAdSession, fetchAdmobKeys, grantAdRew
 import { deleteAccount } from './account.ts';
 import { emailKey, IdentityVerifier, normalizePhone, PROVIDERS } from './auth.ts';
 import { CLAIM_STATUSES, claimInfo, getClaim, listClaims, setClaimStatus, submitClaim } from './claims.ts';
-import { checkRegion, COUNTRIES } from './eligibility.ts';
+import { ageOfMajority, ageOn, checkRegion, COUNTRIES } from './eligibility.ts';
+import { claimFlags, duplicateGroups } from './duplicates.ts';
 import { getBudgetStatus } from './budget.ts';
 import {
   contestStandings,
@@ -23,9 +24,7 @@ import {
   updateCompetition,
   type Competition,
   browseContests,
-  LENGTHS,
   PRIZE_TYPES,
-  SIZES,
   SORTS,
 } from './competitions.ts';
 import { AD_REWARD_POINTS, SPORT_LABELS, type Config } from './config.ts';
@@ -174,6 +173,8 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
         phone: z.string().max(32),
         country: z.enum(COUNTRIES),
         region: z.string().length(2).toUpperCase(),
+        /** YYYY-MM-DD. Must be at least the age of majority where they live. */
+        birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         /** The player ticked "I agree to the Official Rules and Privacy Policy" and confirmed their age. */
         acceptedTerms: z.literal(true),
       })
@@ -204,6 +205,10 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
     if (!phone) return reply.code(400).send({ error: 'bad_phone' });
     const where = checkRegion(p.country, p.region);
     if (!where.ok) return reply.code(where.error === 'region_not_eligible' ? 403 : 400).send({ error: where.error });
+    const age = ageOn(p.birthDate, now);
+    if (age === null) return reply.code(400).send({ error: 'bad_birth_date' });
+    const minimumAge = ageOfMajority(p.country, p.region);
+    if (age < minimumAge) return reply.code(403).send({ error: 'under_age', minimumAge });
     if (db.prepare('SELECT 1 FROM users WHERE email_key = ?').get(ek)) return reply.code(409).send({ error: 'email_taken' });
     if (db.prepare('SELECT 1 FROM users WHERE phone = ?').get(phone)) return reply.code(409).send({ error: 'phone_taken' });
     if (db.prepare('SELECT 1 FROM users WHERE display_name = ?').get(p.displayName)) return reply.code(409).send({ error: 'name_taken' });
@@ -212,9 +217,9 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
     try {
       db.prepare(
         `INSERT INTO users (id, display_name, token_hash, created_at, auth_provider, auth_sub, email, email_key, phone, country, region,
-                            terms_accepted_at, terms_version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(id, p.displayName, hashToken(token), now, who.provider, who.sub, p.email.trim(), ek, phone, p.country, p.region, now, cfg.termsVersion);
+                            birth_date, terms_accepted_at, terms_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(id, p.displayName, hashToken(token), now, who.provider, who.sub, p.email.trim(), ek, phone, p.country, p.region, p.birthDate, now, cfg.termsVersion);
     } catch {
       return reply.code(409).send({ error: 'taken' }); // lost a race with another sign-up
     }
@@ -442,8 +447,10 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
     status: z.enum(['open', 'live', 'upcoming', 'mine']).optional(),
     sport: z.string().max(60).optional(),
     prizeType: z.enum(PRIZE_TYPES).optional(),
-    size: z.enum(Object.keys(SIZES) as [keyof typeof SIZES]).optional(),
-    length: z.enum(Object.keys(LENGTHS) as [keyof typeof LENGTHS]).optional(),
+    sizeMin: z.coerce.number().int().min(0).optional(),
+    sizeMax: z.coerce.number().int().min(0).optional(),
+    lengthMin: z.coerce.number().int().min(0).max(400).optional(),
+    lengthMax: z.coerce.number().int().min(0).max(400).optional(),
     startFrom: z.string().datetime({ offset: true }).optional(),
     startTo: z.string().datetime({ offset: true }).optional(),
     sort: z.enum(SORTS).optional(),
@@ -659,6 +666,12 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
     return { standings: contestStandings(db, c, 50).map(({ userId: _u, ...r }) => r) };
   });
 
+  // Accounts that are probably the same person, for the admin to review.
+  app.get('/admin/duplicates', async (req) => {
+    requireAdmin(req);
+    return { groups: duplicateGroups(db, cfg) };
+  });
+
   // Contact us messages, newest first, with the player's contact details.
   app.get('/admin/messages', async (req) => {
     requireAdmin(req);
@@ -682,7 +695,8 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
   // Winners' claim forms (decrypted for the admin only) and their status.
   app.get('/admin/claims', async (req) => {
     requireAdmin(req);
-    return { claims: listClaims(db, cfg), claimsKeySet: !!cfg.claimsKey };
+    const groups = duplicateGroups(db, cfg);
+    return { claims: listClaims(db, cfg).map((c) => ({ ...c, flags: claimFlags(db, c, groups) })), claimsKeySet: !!cfg.claimsKey };
   });
 
   app.put('/admin/claims/:competitionId/:userId', async (req, reply) => {

@@ -11,7 +11,7 @@ import { ContestCard } from '../../components/ContestCard';
 import { FilterIcon, FilterSheet } from '../../components/FilterSheet';
 import { GameButton } from '../../components/GameButton';
 import { api, ApiError, type Contest } from '../../lib/api';
-import { activeChips, DEFAULT_FILTERS, sortLabel, toQuery, type Filters } from '../../lib/contestFilters';
+import { activeChips, DEFAULT_FILTERS, fromSaved, sortLabel, toQuery, type Filters } from '../../lib/contestFilters';
 import { useContests } from '../../lib/contests';
 import { tap, warn } from '../../lib/haptics';
 import { useSession } from '../../lib/session';
@@ -25,6 +25,13 @@ const JOIN_ERRORS: Record<string, string> = {
   ended: 'That contest has ended.',
   already_joined: "You're already in.",
 };
+
+/** Remove one chip's filter (size and length chips cover both ends of their range). */
+function clearChip(f: Filters, key: keyof Filters): Filters {
+  if (key === 'sizeMin') return { ...f, sizeMin: '', sizeMax: '' };
+  if (key === 'lengthMin') return { ...f, lengthMin: DEFAULT_FILTERS.lengthMin, lengthMax: DEFAULT_FILTERS.lengthMax };
+  return { ...f, [key]: DEFAULT_FILTERS[key] };
+}
 
 export default function Contests() {
   const { token } = useSession();
@@ -47,7 +54,7 @@ export default function Contests() {
   // Remember the player's filters between visits.
   useEffect(() => {
     SecureStore.getItemAsync(FILTERS_KEY)
-      .then((raw) => raw && setFilters({ ...DEFAULT_FILTERS, ...(JSON.parse(raw) as Partial<Filters>) }))
+      .then((raw) => raw && setFilters(fromSaved(JSON.parse(raw) as Record<string, unknown>)))
       .catch(() => {})
       .finally(() => setFiltersReady(true));
   }, []);
@@ -171,7 +178,7 @@ export default function Contests() {
                     key={c.key}
                     onPress={() => {
                       tap();
-                      applyFilters({ ...filters, [c.key]: DEFAULT_FILTERS[c.key] });
+                      applyFilters(clearChip(filters, c.key));
                     }}
                     style={styles.chip}
                     accessibilityRole="button"
