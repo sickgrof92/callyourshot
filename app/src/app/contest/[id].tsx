@@ -70,6 +70,8 @@ export default function ContestScreen() {
   const canCollect = !!c && c.joined && c.status === 'live' && !!c.mine?.canEarnPoints;
   const refillsLeft = c?.mine ? Math.max(c.mine.pointsAdsPerDay - c.mine.pointsAdsToday, 0) : 0;
 
+  const popupOpen = canCollect && !popupClosed && !party;
+
   async function collect() {
     if (!c) return;
     setWatching(true);
@@ -78,6 +80,8 @@ export default function ContestScreen() {
       const done = await watch('points', c.id);
       if (done) {
         setPopupClosed(true);
+        // Let the pop-up close first: iOS can't open the celebration while it's still closing.
+        await new Promise((r) => setTimeout(r, 400));
         setParty({ title: `+${me?.adRewardPoints ?? 10} POINTS!`, subtitle: c.name, color: colors.accent });
         await contests.refresh();
         await load();
@@ -174,15 +178,17 @@ export default function ContestScreen() {
         }
       />
       <CollectPoints
-        visible={canCollect && !popupClosed && !party}
+        visible={popupOpen}
         first={(c?.mine?.pointsAdsToday ?? 0) === 0 && (c?.mine?.picksInPlay ?? 0) === 0}
         points={me?.adRewardPoints ?? 10}
         refillsLeft={refillsLeft}
         busy={watching}
         onWatch={collect}
         onClose={() => setPopupClosed(true)}
-      />
-      {adModal}
+      >
+        {popupOpen && adModal}
+      </CollectPoints>
+      {!popupOpen && adModal}
       <ClaimPrizePopup contest={c && c.claim === 'pending' && !party ? c : null} />
       <Celebration info={party} onDone={() => setParty(null)} />
     </View>
