@@ -2,7 +2,7 @@
 // each with a fixed prize, an entry cap and start/end times.
 //
 // Everything happens inside a contest. Each player who joins starts that
-// contest at 0 points, with its own 5 refills a day, its own picks and its own
+// contest with its own 10 starting points, its own 5 refills per day, its own picks and its own
 // balance; nothing carries between contests. A player can join as many
 // contests as they like. Standings rank entrants by their points in the
 // contest: balance plus points still in play on ungraded picks.
@@ -182,8 +182,8 @@ export function contestStandings(db: DB, c: Competition, limit = 500): ContestSt
       `SELECT e.user_id AS userId, u.display_name AS displayName,
               e.balance + COALESCE((SELECT SUM(p.stake) FROM picks p
                                     WHERE p.competition_id = e.competition_id AND p.user_id = e.user_id AND p.status = 'pending'), 0) AS score,
-              (SELECT COUNT(*) FROM ad_sessions a
-               WHERE a.competition_id = e.competition_id AND a.user_id = e.user_id AND a.purpose = 'points' AND a.rewarded_at IS NOT NULL) AS refills,
+              MAX(0, (SELECT COUNT(*) FROM ad_sessions a
+               WHERE a.competition_id = e.competition_id AND a.user_id = e.user_id AND a.purpose = 'points' AND a.rewarded_at IS NOT NULL) - 1) AS refills,
               (SELECT COUNT(*) FROM picks p WHERE p.competition_id = e.competition_id AND p.user_id = e.user_id AND p.status = 'won') AS wins,
               (SELECT COUNT(*) FROM picks p WHERE p.competition_id = e.competition_id AND p.user_id = e.user_id AND p.status = 'lost') AS losses
        FROM competition_entries e

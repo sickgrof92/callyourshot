@@ -9,6 +9,30 @@ export type DB = DatabaseSync;
 export const LEDGER_KINDS = ['ad_reward', 'pick_stake', 'pick_won', 'pick_push', 'pick_lost', 'pick_void'] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
+/**
+ * A pick is either a single (one game: event_id set) or a parlay (market
+ * 'parlay', no event_id; its games are in parlay_legs). Each parlay in a round
+ * robin is its own row; group_id ties a round robin's parlays together.
+ */
+const PICKS_TABLE = `CREATE TABLE IF NOT EXISTS picks (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL REFERENCES users(id),
+  competition_id TEXT NOT NULL REFERENCES competitions(id),
+  event_id    TEXT REFERENCES events(id),
+  market      TEXT NOT NULL,
+  selection   TEXT NOT NULL,
+  point       REAL,
+  price       INTEGER NOT NULL,
+  stake       INTEGER NOT NULL CHECK (stake > 0),
+  status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','won','lost','push','void')),
+  payout      INTEGER,
+  created_at  INTEGER NOT NULL,
+  settled_at  INTEGER,
+  forfeited_at INTEGER,
+  group_id    TEXT,
+  UNIQUE (competition_id, user_id, event_id, market)
+);`;
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id            TEXT PRIMARY KEY,
@@ -83,24 +107,22 @@ CREATE TABLE IF NOT EXISTS lines (
   PRIMARY KEY (event_id, market, selection)
 );
 
-CREATE TABLE IF NOT EXISTS picks (
-  id          TEXT PRIMARY KEY,
-  user_id     TEXT NOT NULL REFERENCES users(id),
-  competition_id TEXT NOT NULL REFERENCES competitions(id),
+${PICKS_TABLE}
+CREATE INDEX IF NOT EXISTS picks_pending ON picks(status, event_id);
+CREATE INDEX IF NOT EXISTS picks_group ON picks(group_id);
+
+-- The games in a parlay (a picks row with market 'parlay' and no event).
+CREATE TABLE IF NOT EXISTS parlay_legs (
+  pick_id     TEXT NOT NULL REFERENCES picks(id) ON DELETE CASCADE,
   event_id    TEXT NOT NULL REFERENCES events(id),
   market      TEXT NOT NULL,
   selection   TEXT NOT NULL,
   point       REAL,
   price       INTEGER NOT NULL,
-  stake       INTEGER NOT NULL CHECK (stake > 0),
   status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','won','lost','push','void')),
-  payout      INTEGER,
-  created_at  INTEGER NOT NULL,
-  settled_at  INTEGER,
-  forfeited_at INTEGER,
-  UNIQUE (competition_id, user_id, event_id, market)
+  PRIMARY KEY (pick_id, event_id)
 );
-CREATE INDEX IF NOT EXISTS picks_pending ON picks(status, event_id);
+CREATE INDEX IF NOT EXISTS parlay_legs_event ON parlay_legs(event_id, status);
 CREATE INDEX IF NOT EXISTS picks_entry ON picks(competition_id, user_id, status);
 
 CREATE TABLE IF NOT EXISTS ad_sessions (
@@ -237,6 +259,18 @@ function migrate(db: DB): void {
     if (!comp.includes('sport')) db.exec('ALTER TABLE competitions ADD COLUMN sport TEXT');
     if (!colsOf('users').includes('birth_date')) db.exec('ALTER TABLE users ADD COLUMN birth_date TEXT');
     if (!colsOf('events').includes('cancelled')) db.exec('ALTER TABLE events ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0');
+    if (!colsOf('picks').includes('group_id')) {
+      // Parlays need picks without a single game, so rebuild the table with event_id optional.
+      const cols = colsOf('picks').join(', ');
+      db.exec('PRAGMA foreign_keys = OFF');
+      db.exec('BEGIN');
+      db.exec('ALTER TABLE picks RENAME TO picks_old');
+      db.exec(PICKS_TABLE);
+      db.exec(`INSERT INTO picks (${cols}) SELECT ${cols} FROM picks_old`);
+      db.exec('DROP TABLE picks_old');
+      db.exec('COMMIT');
+      db.exec('PRAGMA foreign_keys = ON');
+    }
     return;
   }
   db.exec('PRAGMA foreign_keys = OFF');

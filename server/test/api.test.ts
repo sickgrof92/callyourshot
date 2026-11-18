@@ -86,7 +86,8 @@ describe('end-to-end', () => {
     // Can't watch for more points while you still have points.
     expect((await watchAd(app, a, 'points', cid)).start.json().error).toBe('not_out_of_points');
     await watchAd(app, b, 'points', cid);
-    expect(await mine(app, a, cid)).toMatchObject({ balance: 10, canEarnPoints: false, pointsAdsToday: 1 });
+    // The starting points are not a refill.
+    expect(await mine(app, a, cid)).toMatchObject({ balance: 10, canEarnPoints: false, pointsAdsToday: 0, hasStartingPoints: true });
 
     const lines = (await app.inject({ method: 'GET', url: '/lines?sport=basketball_nba' })).json();
     expect(lines.events[0].lines.spread.home).toEqual({ point: -3.5, price: -110, payout: 1.91 });
@@ -265,7 +266,7 @@ describe('end-to-end', () => {
     expect((await change({ market: 'moneyline', selection: 'away', points: 10, adSessionId: ad3 })).json().error).toBe('locked');
   });
 
-  it('refills only at exactly 0 points, and lets leftover points be used all at once', async () => {
+  it('refills only at exactly 0 points, and takes picks of any amount from 1 point', async () => {
     const { app, db, cid, loadLines } = setup(et(2026, 11, 21, 12));
     await loadLines();
     const a = await signUp(app, 'dana', cid);
@@ -277,9 +278,9 @@ describe('end-to-end', () => {
       'not_out_of_points',
     );
     const ad = (await watchAd(app, a, 'pick')).sessionId!;
-    // Below the 10-point minimum only works for all the leftover points.
-    expect((await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 4, adSessionId: ad })).json().error).toBe('bad_amount');
-    expect((await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 5, adSessionId: ad })).statusCode).toBe(200);
+    // Any whole number of points from 1 up works.
+    expect((await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 0, adSessionId: ad })).json().error).toBe('bad_amount');
+    expect((await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 4, adSessionId: ad })).statusCode).toBe(200);
   });
 
   it('lets the admin load a sport\'s lines right away', async () => {
@@ -341,11 +342,12 @@ describe('end-to-end', () => {
     expect((await watchAd(app, e, 'points', cid)).sessionId).not.toBeNull();
   });
 
-  it('allows at most 5 refills a day per contest, counting the first, and only while out of points', async () => {
+  it('allows the starting points plus at most 5 refills a day per contest, only while out of points', async () => {
     const { app, db, cid, setClock } = setup(et(2026, 11, 21, 12));
     const c = await signUp(app, 'carol', cid);
     const spendAll = () => db.prepare('UPDATE competition_entries SET balance = 0 WHERE competition_id = ?').run(cid);
-    for (let i = 0; i < 5; i++) {
+    // The starting points, then 5 refills.
+    for (let i = 0; i < 6; i++) {
       spendAll();
       expect((await watchAd(app, c, 'points', cid)).sessionId).not.toBeNull();
     }

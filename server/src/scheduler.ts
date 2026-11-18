@@ -219,7 +219,10 @@ export function buildPlans(db: DB, cfg: Config, now: number): SportPlan[] {
   const startsStmt = db.prepare('SELECT commence_time AS t FROM events WHERE sport = ? AND cancelled = 0 AND commence_time >= ? AND commence_time < ?');
   const pendingStmt = db.prepare(
     `SELECT DISTINCT e.commence_time AS t FROM picks p JOIN events e ON e.id = p.event_id
-     WHERE p.status = 'pending' AND e.completed = 0 AND e.sport = ?`,
+     WHERE p.status = 'pending' AND e.completed = 0 AND e.sport = ?1
+     UNION
+     SELECT DISTINCT e.commence_time AS t FROM parlay_legs l JOIN events e ON e.id = l.event_id
+     WHERE l.status = 'pending' AND e.completed = 0 AND e.sport = ?1`,
   );
   const stateStmt = db.prepare('SELECT last_odds_at, last_scores_at, last_events_at FROM sport_state WHERE sport = ?');
   return cfg.sports.map((sport) => {
@@ -317,7 +320,10 @@ export async function tick(db: DB, cfg: Config, api: OddsApi, now: number, log?:
   }
   // Catch events completed earlier whose picks were not graded (e.g. a crash mid-tick).
   const leftover = db
-    .prepare("SELECT DISTINCT p.event_id AS id FROM picks p JOIN events e ON e.id = p.event_id WHERE p.status = 'pending' AND e.completed = 1")
+    .prepare(
+      `SELECT DISTINCT p.event_id AS id FROM picks p JOIN events e ON e.id = p.event_id WHERE p.status = 'pending' AND e.completed = 1
+       UNION SELECT DISTINCT l.event_id AS id FROM parlay_legs l JOIN events e ON e.id = l.event_id WHERE l.status = 'pending' AND e.completed = 1`,
+    )
     .all() as { id: string }[];
   for (const { id } of leftover) graded += gradeEvent(db, id, now);
 

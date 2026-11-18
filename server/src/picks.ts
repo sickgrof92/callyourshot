@@ -39,6 +39,8 @@ export type PickResult =
     }
   | { ok: false; error: 'line_moved'; line: LineRow };
 
+const FIRST_LEG = '(SELECT MIN(e2.commence_time) FROM parlay_legs l JOIN events e2 ON e2.id = l.event_id WHERE l.pick_id = p.id)';
+
 const VALID: Record<MarketKind, Selection[]> = {
   moneyline: ['home', 'away'],
   spread: ['home', 'away'],
@@ -116,16 +118,40 @@ export function placePick(db: DB, cfg: Config, userId: string, input: PickInput,
   });
 }
 
+export interface ParlayLegRow {
+  event_id: string;
+  market: string;
+  selection: string;
+  point: number | null;
+  price: number;
+  status: string;
+  sport: string;
+  home_team: string;
+  away_team: string;
+  commence_time: number;
+  home_score: number | null;
+  away_score: number | null;
+}
+
+/**
+ * A player's picks, newest first. Parlays come with their games in `legs`; for
+ * them, commence_time is when the first game starts (when it locks).
+ */
 export function listPicks(db: DB, userId: string, competitionId: string | null, limit = 100) {
-  return db
+  const rows = db
     .prepare(
       `SELECT p.id, p.competition_id, c.name AS competition_name, p.event_id, p.market, p.selection, p.point, p.price, p.stake AS points,
-              p.status, p.payout, p.created_at, p.settled_at, p.forfeited_at,
-              e.sport, e.home_team, e.away_team, e.commence_time, e.home_score, e.away_score
-       FROM picks p JOIN events e ON e.id = p.event_id JOIN competitions c ON c.id = p.competition_id
-       WHERE p.user_id = ? AND (? IS NULL OR p.competition_id = ?) ORDER BY p.created_at DESC LIMIT ?`,
+              p.status, p.payout, p.created_at, p.settled_at, p.forfeited_at, p.group_id,
+              e.sport, e.home_team, e.away_team, COALESCE(e.commence_time, ${FIRST_LEG}) AS commence_time, e.home_score, e.away_score
+       FROM picks p LEFT JOIN events e ON e.id = p.event_id JOIN competitions c ON c.id = p.competition_id
+       WHERE p.user_id = ? AND (? IS NULL OR p.competition_id = ?) ORDER BY p.created_at DESC, p.id LIMIT ?`,
     )
-    .all(userId, competitionId, competitionId, limit);
+    .all(userId, competitionId, competitionId, limit) as (Record<string, unknown> & { id: string; market: string })[];
+  const legsStmt = db.prepare(
+    `SELECT l.event_id, l.market, l.selection, l.point, l.price, l.status, e.sport, e.home_team, e.away_team, e.commence_time, e.home_score, e.away_score
+     FROM parlay_legs l JOIN events e ON e.id = l.event_id WHERE l.pick_id = ? ORDER BY e.commence_time, e.id`,
+  );
+  return rows.map((r) => (r.market === 'parlay' ? { ...r, legs: legsStmt.all(r.id) as unknown as ParlayLegRow[] } : r));
 }
 
 export type ForfeitResult = { ok: true; balance: number } | { ok: false; error: 'not_found' | 'not_started' | 'not_pending' | 'forfeit_ad_required' };
@@ -139,7 +165,10 @@ export type ForfeitResult = { ok: true; balance: number } | { ok: false; error: 
 export function forfeitPick(db: DB, userId: string, pickId: string, adSessionId: string | undefined, now: number): ForfeitResult {
   return tx(db, (): ForfeitResult => {
     const p = db
-      .prepare('SELECT p.status, p.stake, p.competition_id, e.commence_time FROM picks p JOIN events e ON e.id = p.event_id WHERE p.id = ? AND p.user_id = ?')
+      .prepare(
+        `SELECT p.status, p.stake, p.competition_id, COALESCE(e.commence_time, ${FIRST_LEG}) AS commence_time
+         FROM picks p LEFT JOIN events e ON e.id = p.event_id WHERE p.id = ? AND p.user_id = ?`,
+      )
       .get(pickId, userId) as { status: string; stake: number; competition_id: string; commence_time: number } | undefined;
     if (!p) return { ok: false, error: 'not_found' };
     if (p.status !== 'pending') return { ok: false, error: 'not_pending' };

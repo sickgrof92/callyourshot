@@ -174,12 +174,12 @@ export default function ContestScreen() {
         }}
         ListEmptyComponent={c ? <Text style={styles.empty}>No players yet. Join and be first on the board.</Text> : undefined}
         ListFooterComponent={
-          c ? <Text style={styles.fine}>Score = your points in this contest, counting points on picks still in play. Ties go to fewest refills used, then best win %, then most winning picks. Still tied? Everyone tied for first wins the prize (with more than 3 tied, more tiebreakers may be used). Tap a name to see their stats.</Text> : undefined
+          c ? <Text style={styles.fine}>Score = your points in this contest, counting points on picks still in play. Ties go to fewest refills used (starting points don't count), then best win %, then most winning picks. Still tied? Everyone tied for first wins the prize (with more than 3 tied, more tiebreakers may be used). Tap a name to see their stats.</Text> : undefined
         }
       />
       <CollectPoints
         visible={popupOpen}
-        first={(c?.mine?.pointsAdsToday ?? 0) === 0 && (c?.mine?.picksInPlay ?? 0) === 0}
+        first={!c?.mine?.hasStartingPoints}
         points={me?.adRewardPoints ?? 10}
         refillsLeft={refillsLeft}
         busy={watching}

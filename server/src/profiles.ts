@@ -27,9 +27,9 @@ export function playerStats(db: DB, displayName: string): PlayerStats | null {
   if (!u) return null;
   const results = db
     .prepare(
-      `SELECT p.status FROM picks p JOIN events e ON e.id = p.event_id
+      `SELECT p.status FROM picks p LEFT JOIN events e ON e.id = p.event_id
        WHERE p.user_id = ? AND p.status IN ('won', 'lost', 'push')
-       ORDER BY e.commence_time, p.settled_at, p.created_at`,
+       ORDER BY COALESCE(e.commence_time, p.settled_at), p.settled_at, p.created_at`,
     )
     .all(u.id) as { status: 'won' | 'lost' | 'push' }[];
   let wins = 0;
@@ -57,7 +57,10 @@ export function playerStats(db: DB, displayName: string): PlayerStats | null {
     winPct: wins + losses > 0 ? wins / (wins + losses) : null,
     longestWinStreak: best,
     currentWinStreak: run,
-    reloads: n("SELECT COUNT(*) AS n FROM ad_sessions WHERE user_id = ? AND purpose = 'points' AND rewarded_at IS NOT NULL"),
+    // Each contest's first points video is its starting points, not a reload.
+    reloads: n(
+      "SELECT COUNT(*) - COUNT(DISTINCT competition_id) AS n FROM ad_sessions WHERE user_id = ? AND purpose = 'points' AND rewarded_at IS NOT NULL",
+    ),
     contestsJoined: n('SELECT COUNT(*) AS n FROM competition_entries WHERE user_id = ?'),
     contestsWon: n('SELECT COUNT(*) AS n FROM prize_claims WHERE user_id = ?'),
   };

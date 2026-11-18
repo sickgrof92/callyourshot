@@ -1,7 +1,7 @@
 // Grades pending picks once a game's final score is in.
 
 import { tx, type DB } from './db.ts';
-import { postLedger, winPayout } from './points.ts';
+import { payoutMultiplier, postLedger, winPayout } from './points.ts';
 import { DAY, HOUR } from './time.ts';
 
 export type Outcome = 'won' | 'lost' | 'push';
@@ -45,11 +45,11 @@ interface PendingPick {
   commence_time: number;
 }
 
-function settle(db: DB, p: PendingPick, status: 'won' | 'lost' | 'push' | 'void', now: number): void {
+function settle(db: DB, p: PendingPick, status: 'won' | 'lost' | 'push' | 'void', now: number, winAmount?: number): void {
   const base = { userId: p.user_id, competitionId: p.competition_id, ref: p.id, at: now };
   let payout = 0;
   if (status === 'won') {
-    payout = winPayout(p.stake, p.price);
+    payout = winAmount ?? winPayout(p.stake, p.price);
     postLedger(db, { ...base, kind: 'pick_won', amount: payout });
   } else if (status === 'push' || status === 'void') {
     payout = p.stake;
@@ -77,8 +77,51 @@ export function gradeEvent(db: DB, eventId: string, now: number): number {
       .prepare("SELECT p.id, p.user_id, p.competition_id, p.market, p.selection, p.point, p.price, p.stake, e.commence_time FROM picks p JOIN events e ON e.id = p.event_id WHERE p.event_id = ? AND p.status = 'pending'")
       .all(eventId) as unknown as PendingPick[];
     for (const p of picks) settle(db, p, gradePick(p, ev.home_score, ev.away_score), now);
-    return picks.length;
+    const h = ev.home_score;
+    const a = ev.away_score;
+    return picks.length + settleLegs(db, eventId, (leg) => gradePick(leg, h, a), now);
   });
+}
+
+// ---- Parlays -----------------------------------------------------------------
+// A parlay wins only if every game wins. A pushed or refunded game drops out
+// and the parlay pays on the games left (all of them dropping out refunds it).
+// One losing game loses the parlay right away.
+
+/** Points returned on a winning parlay: stake times every winning game's multiplier, rounded down. */
+export function parlayPayout(stake: number, prices: number[]): number {
+  const m = prices.reduce((acc, p) => acc * payoutMultiplier(p), 1);
+  return Math.floor(stake * m + 1e-9);
+}
+
+/** Grade (or refund) the parlay games on one event, then settle the parlays that are now decided. Returns parlays settled. */
+function settleLegs(db: DB, eventId: string, outcome: (leg: GradablePick) => Outcome | 'void', now: number): number {
+  const legs = db.prepare("SELECT pick_id, market, selection, point FROM parlay_legs WHERE event_id = ? AND status = 'pending'").all(eventId) as unknown as (GradablePick & {
+    pick_id: string;
+  })[];
+  const setLeg = db.prepare('UPDATE parlay_legs SET status = ? WHERE pick_id = ? AND event_id = ?');
+  for (const l of legs) setLeg.run(outcome(l), l.pick_id, eventId);
+  let n = 0;
+  for (const id of new Set(legs.map((l) => l.pick_id))) if (settleParlay(db, id, now)) n++;
+  return n;
+}
+
+/** Settle one parlay if its result is known. Returns true if it was settled now. */
+export function settleParlay(db: DB, pickId: string, now: number): boolean {
+  const p = db
+    .prepare("SELECT id, user_id, competition_id, market, selection, point, price, stake, 0 AS commence_time FROM picks WHERE id = ? AND status = 'pending' AND market = 'parlay'")
+    .get(pickId) as PendingPick | undefined;
+  if (!p) return false;
+  const legs = db.prepare('SELECT status, price FROM parlay_legs WHERE pick_id = ?').all(pickId) as { status: string; price: number }[];
+  if (legs.some((l) => l.status === 'lost')) {
+    settle(db, p, 'lost', now);
+    return true;
+  }
+  if (legs.some((l) => l.status === 'pending')) return false;
+  const won = legs.filter((l) => l.status === 'won');
+  if (won.length === 0) settle(db, p, legs.some((l) => l.status === 'push') ? 'push' : 'void', now);
+  else settle(db, p, 'won', now, parlayPayout(p.stake, won.map((l) => l.price)));
+  return true;
 }
 
 /**
@@ -97,7 +140,15 @@ export function voidStalePicks(db: DB, now: number): number {
       )
       .all(now - VOID_AFTER_MS) as unknown as PendingPick[];
     for (const p of picks) settle(db, p, 'void', now);
-    return picks.length;
+    const staleLegs = db
+      .prepare(
+        `SELECT DISTINCT l.event_id AS id FROM parlay_legs l JOIN events e ON e.id = l.event_id
+         WHERE l.status = 'pending' AND e.completed = 0 AND e.commence_time < ?`,
+      )
+      .all(now - VOID_AFTER_MS) as { id: string }[];
+    let n = picks.length;
+    for (const { id } of staleLegs) n += settleLegs(db, id, () => 'void', now);
+    return n;
   });
 }
 
@@ -140,7 +191,7 @@ export function voidPostponed(db: DB, sport: string, feed: { id: string; commenc
       if (!off) continue;
       const picks = pendingStmt.all(ev.id) as unknown as PendingPick[];
       for (const p of picks) settle(db, p, 'void', now);
-      n += picks.length;
+      n += picks.length + settleLegs(db, ev.id, () => 'void', now);
     }
     return n;
   });

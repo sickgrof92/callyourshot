@@ -1,4 +1,5 @@
 import { expectedEnd } from './gameLength.ts';
+import { PARLAY_MAX_LEGS, placeParlay, ROUND_ROBIN_MAX_PICKS } from './parlays.ts';
 import type { OddsApi } from './oddsApi.ts';
 import { refreshLinesNow } from './scheduler.ts';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
@@ -148,6 +149,7 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
         picksInPlay: e.pendingPicks,
         canEarnPoints: e.canEarnPoints,
         pointsAdsToday: e.pointsAdsToday,
+        hasStartingPoints: e.hasStartingPoints,
         pointsAdsPerDay: e.pointsAdsPerDay,
       },
     };
@@ -364,6 +366,45 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
   });
 
   // Give up a pending pick as a loss (needs a completed forfeit ad). Nothing is refunded.
+  app.post('/parlays', async (req, reply) => {
+    const u = requireUser(req);
+    const leg = z.object({
+      eventId: z.string(),
+      market: z.enum(['moneyline', 'spread', 'total']),
+      selection: z.enum(['home', 'away', 'over', 'under']),
+      expectedPoint: z.number().nullable().optional(),
+      expectedPrice: z.number().int().optional(),
+    });
+    const body = z
+      .object({
+        competitionId: z.string(),
+        legs: z.array(leg).max(PARLAY_MAX_LEGS),
+        sizes: z.array(z.number().int()).max(ROUND_ROBIN_MAX_PICKS).optional(),
+        points: z.number().int(),
+        adSessionId: z.string().optional(),
+      })
+      .parse(req.body);
+    const res = placeParlay(db, cfg, u.id, body, clock());
+    if (res.ok) return res;
+    const status = {
+      not_joined: 403,
+      contest_not_live: 409,
+      bad_legs: 400,
+      same_game: 400,
+      bad_sizes: 400,
+      bad_amount: 400,
+      not_found: 404,
+      locked: 409,
+      after_contest_end: 409,
+      wrong_sport: 409,
+      no_line: 404,
+      not_enough_points: 402,
+      pick_ad_required: 403,
+      line_moved: 409,
+    }[res.error];
+    return reply.code(status).send(res);
+  });
+
   app.post('/picks/:id/change', async (req, reply) => {
     const u = requireUser(req);
     const { id } = z.object({ id: z.string() }).parse(req.params);

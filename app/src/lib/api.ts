@@ -40,17 +40,43 @@ export interface MyEntry {
   picksInPlay: number;
   /** Out of points with nothing in play, and refills left today. */
   canEarnPoints: boolean;
+  /** Refills used today (the starting points don't count). */
   pointsAdsToday: number;
   pointsAdsPerDay: number;
+  /** Whether the starting points in this contest have been collected. */
+  hasStartingPoints: boolean;
 }
 
+/** One game in a parlay. */
+export interface ParlayLeg {
+  event_id: string;
+  market: Market;
+  selection: Selection;
+  point: number | null;
+  price: number;
+  status: 'pending' | 'won' | 'lost' | 'push' | 'void';
+  sport: string;
+  home_team: string;
+  away_team: string;
+  commence_time: number;
+  home_score: number | null;
+  away_score: number | null;
+}
+
+/**
+ * A single pick, or a parlay (market 'parlay', with its games in `legs`; selection
+ * is 'round_robin' when it's part of one, and group_id ties those together).
+ * For a parlay, commence_time is when its first game starts and the game fields are null.
+ */
 export interface Pick {
   id: string;
   competition_id: string;
   competition_name: string;
-  event_id: string;
-  market: Market;
-  selection: Selection;
+  event_id: string | null;
+  market: Market | 'parlay';
+  selection: Selection | 'parlay' | 'round_robin';
+  group_id: string | null;
+  legs?: ParlayLeg[];
   point: number | null;
   price: number;
   points: number;
@@ -216,6 +242,18 @@ export const api = {
       adSessionId: string;
     },
   ) => request<{ pickId: string; balance: number }>('/picks', { method: 'POST', body, token }),
+  makeParlay: (
+    token: string,
+    body: {
+      competitionId: string;
+      legs: { eventId: string; market: Market; selection: Selection; expectedPoint: number | null; expectedPrice: number }[];
+      /** Round robin sizes, e.g. [2] for "by 2s". Leave out for one parlay. */
+      sizes?: number[];
+      /** Points on each parlay. */
+      points: number;
+      adSessionId: string;
+    },
+  ) => request<{ groupId: string; pickIds: string[]; totalPoints: number; balance: number }>('/parlays', { method: 'POST', body, token }),
   myPicks: (token: string, competitionId?: string) =>
     request<{ picks: Pick[] }>(`/picks${competitionId ? `?competitionId=${encodeURIComponent(competitionId)}` : ''}`, { token }),
   changePick: (

@@ -110,7 +110,7 @@ export function loadConfig(): Config {
 
     // 30 minutes suits small plans; use 5 on a paid Odds API plan so picks grade within minutes.
     scoresIntervalMs: num('SCORES_INTERVAL_MINUTES', 30) * 60_000,
-    minPickPoints: num('MIN_PICK_POINTS', 10),
+    minPickPoints: num('MIN_PICK_POINTS', 1),
     maxPickPoints: num('MAX_PICK_POINTS', 500),
 
     authMode,
