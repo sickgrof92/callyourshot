@@ -317,10 +317,19 @@
           <span class="badge ${m.handled_at ? 'ended' : 'live'}">${TOPIC[m.topic] || esc(m.topic)}</span>
           <div style="white-space:pre-wrap;margin:8px 0">${esc(m.body)}</div>
           <div class="muted">${esc(m.display_name)} · <a href="mailto:${esc(m.email)}" style="color:inherit">${esc(m.email)}</a> · ${esc(m.phone)} · ${when(new Date(m.created_at).toISOString())}</div>
-          <div class="actions"><button class="small ghost" data-msg="${esc(m.id)}" data-handled="${m.handled_at ? '0' : '1'}">${m.handled_at ? 'Mark new' : 'Mark done'}</button></div>
+          <div class="actions">${m.topic === 'Account deletion request (web)' && !m.handled_at ? `<button class="small danger" data-delreq="${esc(m.id)}" data-who="${esc(m.email)}">Delete matching account</button>` : ''}<button class="small ghost" data-msg="${esc(m.id)}" data-handled="${m.handled_at ? '0' : '1'}">${m.handled_at ? 'Mark new' : 'Mark done'}</button></div>
         </div>`).join('')
       : '<div class="muted">No messages yet. Players send these from Contact us in the app menu.</div>';
   }
+  document.addEventListener('click', async (e) => {
+    const d = e.target.closest && e.target.closest('button[data-delreq]'); if (!d) return;
+    if (!confirm(`Delete the account with email ${d.dataset.who} (or the same phone)? This can't be undone.`)) return;
+    try {
+      const r = await api(`/admin/deletion-requests/${encodeURIComponent(d.dataset.delreq)}/delete`, { method: 'POST' });
+      alert(`Deleted ${r.deleted}.${r.kept === 'paid_prize_records' ? ' Paid prize records were kept for taxes.' : ''}`);
+    } catch (err) { alert(err.message === 'no_matching_account' ? 'No account has that email or phone. Mark it done, or contact the person.' : err.message); }
+    await loadMessages();
+  });
   document.addEventListener('click', async (e) => {
     const b = e.target.closest && e.target.closest('button[data-msg]'); if (!b) return;
     try { await api(`/admin/messages/${encodeURIComponent(b.dataset.msg)}`, { method: 'PUT', body: { handled: b.dataset.handled === '1' } }); await loadMessages(); }
