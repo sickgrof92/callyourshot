@@ -4,7 +4,7 @@ Everything here is only needed when you go live with real players. For testing, 
 
 ## 1. Keep the data: Render Starter plan and a disk
 
-The free plan has no disk, so the database resets on every restart or deploy.
+The free plan has no disk. If you set up `DATABASE_URL` (TESTING.md, "Keep your data"), the data is already kept in Neon and this step is optional. A Starter plan is still worth it at launch: the server never sleeps, and with a disk nothing is lost even in a crash. You can keep `DATABASE_URL` set as an off-site backup.
 
 1. In Render, open the **callyourshot-api** service, then **Settings** > **Instance Type**, and choose **Starter**.
 2. Open **Disks** > **Add disk**. Name `data`, mount path `/var/data`, size 1 GB.

@@ -23,6 +23,10 @@ function list(name: string, fallback: string[]): string[] {
 export interface Config {
   port: number;
   dbPath: string;
+  /** Postgres connection string where a copy of the database is kept so it survives restarts (see persist.ts). Empty: no copy. */
+  databaseUrl: string;
+  /** Seconds between saved copies (only when something changed). */
+  snapshotSeconds: number;
   adminToken: string;
   timeZone: string;
   /** Hour (local, in timeZone) at which a new "sports day" starts. Late West Coast games belong to the previous day. */
@@ -79,6 +83,8 @@ export function loadConfig(): Config {
   return {
     port: num('PORT', 8080),
     dbPath: str('DB_PATH', './data/callyourshot.db'),
+    databaseUrl: str('DATABASE_URL', ''),
+    snapshotSeconds: num('SNAPSHOT_SECONDS', 60),
     adminToken: str('ADMIN_TOKEN', ''),
     timeZone: str('APP_TIME_ZONE', 'America/New_York'),
     dayStartHour: num('DAY_START_HOUR', 5),
