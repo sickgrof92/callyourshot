@@ -8,14 +8,14 @@ import { startScheduler } from './scheduler.ts';
 
 const cfg = loadConfig();
 const db = openDb(cfg.dbPath);
-const app = buildApp({ db, cfg, logger: true });
+const oddsApi = cfg.oddsApiKey ? new HttpOddsApi(cfg.oddsApiKey, cfg.oddsApiBase, cfg.oddsRegions) : undefined;
+const app = buildApp({ db, cfg, logger: true, oddsApi });
 
 if (cfg.schedulerEnabled) {
-  if (!cfg.oddsApiKey) {
+  if (!oddsApi) {
     app.log.warn('ODDS_API_KEY is not set: the line refresh scheduler is off and no lines will load.');
   } else {
-    const api = new HttpOddsApi(cfg.oddsApiKey, cfg.oddsApiBase, cfg.oddsRegions);
-    startScheduler(db, cfg, api, app.log);
+    startScheduler(db, cfg, oddsApi, app.log);
   }
 }
 if (cfg.adProvider === 'stub') app.log.warn('AD_PROVIDER=stub: the app completes ads itself. Fine for testing; set AD_PROVIDER=admob before launch.');

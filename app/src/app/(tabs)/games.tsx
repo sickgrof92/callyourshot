@@ -25,14 +25,11 @@ function cellText(market: Market, selection: Selection, point: number | null, pr
   return `${selection === 'over' ? 'O' : 'U'} ${point}  (${signed(price)})`;
 }
 
-function GameCard({ game, contestEndsAt, onPick }: { game: Game; contestEndsAt: string | null; onPick: (t: PickTarget) => void }) {
-  // Games that won't finish before the active contest ends can't count in it.
-  const tooLate = !!contestEndsAt && !game.locked && Date.parse(game.expectedEndsAt) > Date.parse(contestEndsAt);
+function GameCard({ game, onPick }: { game: Game; onPick: (t: PickTarget) => void }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
         <Text style={[styles.time, game.locked && { color: colors.loss }]}>{game.locked ? 'STARTED · PICKS LOCKED' : gameTime(game.startsAt)}</Text>
-        {tooLate && <Text style={styles.tooLate}>ENDS AFTER THIS CONTEST</Text>}
       </View>
       <View style={styles.teams}>
         <Text style={styles.team}>{game.awayTeam}</Text>
@@ -57,7 +54,7 @@ function GameCard({ game, contestEndsAt, onPick }: { game: Game; contestEndsAt: 
                   key={sel}
                   variant="ghost"
                   size="sm"
-                  disabled={!q || game.locked || tooLate}
+                  disabled={!q || game.locked}
                   style={{ flex: 1 }}
                   faceStyle={styles.cellFace}
                   onPress={() => q && onPick({ game, market, selection: sel, quote: q })}
@@ -94,6 +91,10 @@ export default function Games() {
       if (params.sport) setSport(params.sport);
     }
   }, [params.change, params.event, params.sport, params.points]);
+  // Only games that start and are expected to finish inside the active contest can count in it, so only those are shown.
+  const inContest = active
+    ? games.filter((g) => Date.parse(g.startsAt) >= Date.parse(active.startsAt) && Date.parse(g.expectedEndsAt) <= Date.parse(active.endsAt))
+    : games;
   const stopChanging = () => {
     setChanging(null);
     router.setParams({ change: undefined, event: undefined, sport: undefined, points: undefined });
@@ -158,13 +159,20 @@ export default function Games() {
         </View>
       )}
       <FlatList
-        data={changing ? games.filter((g) => g.id === changing.eventId) : games}
+        data={changing ? games.filter((g) => g.id === changing.eventId) : inContest}
         keyExtractor={(g) => g.id}
         contentContainerStyle={{ padding: space.lg, gap: space.md }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
-        renderItem={({ item }) => <GameCard game={item} contestEndsAt={active?.endsAt ?? null} onPick={(t) => (active ? setTarget(t) : router.push('/'))} />}
+        renderItem={({ item }) => <GameCard game={item} onPick={(t) => (active ? setTarget(t) : router.push('/'))} />}
         ListEmptyComponent={
-          <Text style={styles.empty}>{error ?? (loading ? '' : 'No upcoming games right now. Check back soon.')}</Text>
+          <Text style={styles.empty}>
+            {error ??
+              (loading
+                ? ''
+                : games.length > 0
+                  ? "None of these games start and finish inside this contest. Try another sport, or check back as new games are added."
+                  : 'No upcoming games right now. Check back soon.')}
+          </Text>
         }
       />
       <PickSheet
@@ -201,7 +209,6 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.card, borderRadius: 18, padding: space.lg, gap: space.sm, borderWidth: 1.5, borderColor: colors.border },
   cardHead: { flexDirection: 'row', justifyContent: 'space-between' },
   time: { color: colors.neon, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
-  tooLate: { color: colors.muted, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   teams: { marginBottom: space.sm },
   team: { color: colors.text, fontSize: 19, fontWeight: '900' },
   at: { color: colors.pink, fontSize: 12, fontWeight: '900', marginVertical: 1 },

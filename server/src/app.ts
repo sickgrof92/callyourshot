@@ -1,4 +1,6 @@
 import { expectedEnd } from './gameLength.ts';
+import type { OddsApi } from './oddsApi.ts';
+import { refreshLinesNow } from './scheduler.ts';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
@@ -44,6 +46,8 @@ export interface AppDeps {
   logger?: boolean;
   fetchImpl?: typeof fetch;
   verifier?: IdentityVerifier;
+  /** For the admin "load lines now" button. Missing when ODDS_API_KEY isn't set. */
+  oddsApi?: OddsApi;
 }
 
 interface User {
@@ -66,7 +70,7 @@ function safeEqual(a: string, b: string): boolean {
   return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
 
-export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl, verifier = new IdentityVerifier(cfg) }: AppDeps): FastifyInstance {
+export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl, verifier = new IdentityVerifier(cfg), oddsApi }: AppDeps): FastifyInstance {
   const app = Fastify({ logger });
 
   function bearer(req: FastifyRequest): string | null {
@@ -739,6 +743,14 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
   });
 
   // ---- Admin ----------------------------------------------------------------
+
+  app.post('/admin/lines/refresh', async (req, reply) => {
+    requireAdmin(req);
+    const { sport } = z.object({ sport: z.string() }).parse(req.body);
+    if (!oddsApi) return reply.code(503).send({ error: 'ODDS_API_KEY is not set on the server.' });
+    const res = await refreshLinesNow(db, cfg, oddsApi, sport, clock());
+    return res.ok ? res : reply.code(409).send(res);
+  });
 
   app.get('/admin/budget', async (req) => {
     requireAdmin(req);

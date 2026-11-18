@@ -64,6 +64,14 @@
 
   <section id="app" class="hidden">
     <div class="card muted" id="budget"></div>
+    <div class="card">
+      <div><b>Load lines now</b> <span class="muted">· On the free plan, lines load on their own about 2 hours before each sport's first game. Use this to load a sport's lines right away (about 3 credits each time).</span></div>
+      <div class="actions" style="align-items:center">
+        <select id="linesSport"></select>
+        <button id="linesBtn">Load lines</button>
+      </div>
+      <div id="linesMsg"></div>
+    </div>
 
     <h2 id="formTitle">One contest</h2>
     <div class="card">
@@ -194,6 +202,7 @@
     loadClaims().catch((err) => { if (err.message !== 'auth') $('claims').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; });
     loadDupes().catch((err) => { if (err.message !== 'auth') $('dupes').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; });
     loadMessages().catch((err) => { if (err.message !== 'auth') $('messages').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; });
+    if (!$('linesSport').options.length) $('linesSport').innerHTML = data.sports.map((x) => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join('');
     document.querySelectorAll('.sportSel').forEach((sel) => {
       if (sel.options.length) return;
       sel.innerHTML = '<option value="">All sports</option>' + data.sports.map((x) => `<option value="${esc(x.key)}">${esc(x.label)} only</option>`).join('');
@@ -450,6 +459,19 @@
 
   if (token) load().catch(() => {}); else $('login').classList.remove('hidden');
 })();
+  $('linesBtn').addEventListener('click', async () => {
+    const sport = $('linesSport').value;
+    $('linesBtn').disabled = true;
+    show($('linesMsg'), 'Loading…', true);
+    try {
+      const r = await api('/admin/lines/refresh', { method: 'POST', body: { sport } });
+      show($('linesMsg'), `Loaded ${r.withLines} of ${r.games} games with lines.${r.remaining !== null ? ` ${r.remaining} credits left.` : ''}`, true);
+    } catch (err) {
+      if (err.message !== 'auth') show($('linesMsg'), err.message, false);
+    } finally {
+      $('linesBtn').disabled = false;
+    }
+  });
 </script>
 </body>
 </html>
