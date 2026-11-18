@@ -2,6 +2,7 @@
 // their first 10 points right after joining, or a refill when they're out.
 
 import Ionicons from '@expo/vector-icons/Ionicons';
+import type { ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, glow, space } from '../lib/theme';
 import { GameButton } from './GameButton';
@@ -14,6 +15,7 @@ export function CollectPoints({
   busy,
   onWatch,
   onClose,
+  children,
 }: {
   visible: boolean;
   /** No points collected in this contest yet today (e.g. just joined). */
@@ -23,6 +25,11 @@ export function CollectPoints({
   busy: boolean;
   onWatch: () => void;
   onClose: () => void;
+  /**
+   * The ad player. iOS can't show a second pop-up next to this one, only
+   * inside it, so the ad must be rendered here while this is open.
+   */
+  children?: ReactNode;
 }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -41,6 +48,7 @@ export function CollectPoints({
           </Pressable>
         </View>
       </View>
+      {children}
     </Modal>
   );
 }
