@@ -114,7 +114,8 @@ export function ParlaySheet({
     if (!canRobin && kind === 'robin') setKind('parlay');
   }, [canRobin, kind]);
   useEffect(() => {
-    setPoints((p) => Math.max(1, Math.min(p, Math.max(maxEach, 1))));
+    // Only cap once there's a parlay to price; before that maxEach is 0 and would knock the amount down to 1.
+    if (maxEach >= 1) setPoints((p) => Math.max(1, Math.min(p, maxEach)));
   }, [maxEach]);
 
   async function watchAd() {
@@ -178,6 +179,7 @@ export function ParlaySheet({
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={styles.sheet}>
+        <ScrollView contentContainerStyle={{ gap: space.md }} showsVerticalScrollIndicator={false}>
         {active && <Text style={styles.contest}>{changing ? 'CHANGING YOUR PARLAY' : `IN: ${active.name.toUpperCase()}`}</Text>}
         {changing && <Text style={styles.help}>Your {changing.total} pts on the old one come back, and these picks replace it. You can add or remove games too.</Text>}
         <View style={styles.tabs}>
@@ -210,7 +212,7 @@ export function ParlaySheet({
           {!canRobin && n < ROUND_ROBIN_MIN && n >= 2 ? ' Add a 3rd pick for a round robin.' : ''}
         </Text>
 
-        <ScrollView style={{ maxHeight: 220 }} contentContainerStyle={{ gap: space.sm }}>
+        <View style={{ gap: space.sm }}>
           {legs.map((l) => (
             <View key={l.game.id} style={styles.leg}>
               <View style={{ flex: 1 }}>
@@ -224,7 +226,7 @@ export function ParlaySheet({
               </Pressable>
             </View>
           ))}
-        </ScrollView>
+        </View>
 
         {robin && (
           <View style={styles.sizes}>
@@ -280,6 +282,7 @@ export function ParlaySheet({
         <Pressable style={styles.cancel} onPress={onClose}>
           <Text style={styles.cancelText}>Keep adding picks</Text>
         </Pressable>
+        </ScrollView>
       </View>
       {adModal}
     </Modal>
@@ -288,7 +291,7 @@ export function ParlaySheet({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(5,3,20,0.7)' },
-  sheet: { backgroundColor: colors.card, padding: space.xl, paddingBottom: 40, borderTopLeftRadius: 24, borderTopRightRadius: 24, gap: space.md, borderTopWidth: 2, borderColor: colors.pink, maxHeight: '92%' },
+  sheet: { backgroundColor: colors.card, padding: space.xl, paddingBottom: 40, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 2, borderColor: colors.pink, maxHeight: '92%' },
   contest: { color: colors.pink, fontWeight: '900', fontSize: 12, letterSpacing: 1 },
   tabs: { flexDirection: 'row', gap: space.sm },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 14, borderWidth: 2, borderColor: colors.border },

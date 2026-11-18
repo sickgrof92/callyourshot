@@ -23,7 +23,9 @@ export function ago(iso: string | null): string {
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins} min ago`;
   const h = Math.round(mins / 60);
-  return h < 24 ? `${h} hr ago` : `${Math.round(h / 24)} days ago`;
+  if (h < 24) return `${h} hr ago`;
+  const d = Math.round(h / 24);
+  return `${d} ${d === 1 ? 'day' : 'days'} ago`;
 }
 
 export function countdown(iso: string): string {
