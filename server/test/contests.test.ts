@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.ts';
-import { ensureTestContest } from '../src/competitions.ts';
+import { ensureTestContests } from '../src/competitions.ts';
 import { gradeEvent } from '../src/grading.ts';
 import { applyScores, ingestOdds } from '../src/lines.ts';
 import { et, FakeOddsApi, testConfig, testDb } from './helpers.ts';
@@ -182,12 +182,21 @@ describe('contests (players)', () => {
     expect((await join(c, id)).json().error).toBe('ended');
   });
 
-  it('makes a week-long, all-sport test contest when none is live or upcoming', () => {
+  it('makes a week-long and a daily all-sport test contest, once each', () => {
     const db = testDb();
     const cfg = testConfig();
-    const now = et(2026, 11, 17, 17);
-    const made = ensureTestContest(db, cfg, now)!;
-    expect(made).toMatchObject({ name: 'Test week: all sports', sport: null, starts_at: now + 60_000, ends_at: et(2026, 11, 24, 5) });
-    expect(ensureTestContest(db, cfg, now + 1000)).toBeNull();
+    const now = et(2026, 11, 18, 8) + 18 * 60_000; // 8:18 AM ET
+    const made = ensureTestContests(db, cfg, now);
+    expect(made).toHaveLength(2);
+    expect(made[0]).toMatchObject({ name: 'Test week: all sports', kind: 'weekly', sport: null, starts_at: now + 60_000, ends_at: et(2026, 11, 25, 5) });
+    // Today's daily opens at 8:30 AM ET and ends at 5 AM ET tomorrow.
+    expect(made[1]).toMatchObject({ kind: 'daily', sport: null, starts_at: et(2026, 11, 18, 8) + 30 * 60_000, ends_at: et(2026, 11, 19, 5) });
+    expect(made[1].name).toMatch(/^Test day: Wed, Nov 18$/);
+    expect(ensureTestContests(db, cfg, now + 1000)).toHaveLength(0);
+    // Past 8:30, the next day's daily opens a minute out.
+    const later = et(2026, 11, 19, 9);
+    const next = ensureTestContests(db, cfg, later);
+    expect(next).toHaveLength(1);
+    expect(next[0]).toMatchObject({ kind: 'daily', starts_at: later + 60_000, ends_at: et(2026, 11, 20, 5) });
   });
 });
