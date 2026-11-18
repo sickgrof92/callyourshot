@@ -35,6 +35,7 @@ export type PickResult =
         | 'not_joined'
         | 'contest_not_live'
         | 'after_contest_end'
+        | 'before_contest_start'
         | 'wrong_sport';
     }
   | { ok: false; error: 'line_moved'; line: LineRow };
@@ -71,8 +72,10 @@ export function placePick(db: DB, cfg: Config, userId: string, input: PickInput,
     if (!c || !db.prepare('SELECT 1 FROM competition_entries WHERE competition_id = ? AND user_id = ?').get(input.competitionId, userId)) {
       return { ok: false, error: 'not_joined' };
     }
-    if (now < c.starts_at || now >= c.ends_at) return { ok: false, error: 'contest_not_live' };
+    // Picks can be made as soon as you join, before the contest opens, on games inside its window.
+    if (now >= c.ends_at) return { ok: false, error: 'contest_not_live' };
     // Only games that start and finish (expected) inside the contest count in it.
+    if (ev.commence_time < c.starts_at) return { ok: false, error: 'before_contest_start' };
     if (expectedEnd(ev.sport, ev.commence_time) > c.ends_at) return { ok: false, error: 'after_contest_end' };
     // A single-sport contest only takes picks on that sport.
     if (c.sport && ev.sport !== c.sport) return { ok: false, error: 'wrong_sport' };
@@ -216,7 +219,7 @@ export function changePick(db: DB, cfg: Config, userId: string, pickId: string, 
     if (!p) return { ok: false, error: 'not_found' };
     if (p.status !== 'pending') return { ok: false, error: 'not_pending' };
     if (now >= p.commence_time) return { ok: false, error: 'locked' };
-    if (now < p.starts_at || now >= p.ends_at) return { ok: false, error: 'contest_not_live' };
+    if (now >= p.ends_at) return { ok: false, error: 'contest_not_live' };
     // What the player would have to spend from if the old pick were undone.
     const available = entryBalance(db, p.competition_id, userId) + p.stake;
     if (input.points < cfg.minPickPoints && input.points !== available) return { ok: false, error: 'bad_amount' };

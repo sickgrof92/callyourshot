@@ -8,7 +8,7 @@ const RULES: [string, string][] = [
   ['Free to play', 'Call Your Shot is free. There is nothing to buy, and no purchase ever improves your chances.'],
   [
     'Contests',
-    'Everything happens inside of contests. Contests are free to join as long as spots are available. There is no limit to how many contests you can join at once. Each contest starts with 10 points after watching an ad, and they all operate independently. Your points and picks for each contest stay only within the confines of that contest.',
+    'Everything happens inside of contests. Contests are free to join as long as spots are available. There is no limit to how many contests you can join at once. Each contest starts with 10 points after watching an ad, and they all operate independently. You can join a contest before it opens, and as soon as you join you can collect your starting points and make picks in it, on games that start after the contest opens and end before it ends. Your points and picks for each contest stay only within the confines of that contest.',
   ],
   [
     'Getting points',

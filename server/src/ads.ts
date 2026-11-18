@@ -57,7 +57,8 @@ export function adEligibility(db: DB, cfg: Config, userId: string, competitionId
   const day = sportsDay(now, cfg.timeZone, cfg.dayStartHour);
   const c = db.prepare('SELECT starts_at, ends_at FROM competitions WHERE id = ?').get(competitionId) as { starts_at: number; ends_at: number } | undefined;
   const joined = !!db.prepare('SELECT 1 FROM competition_entries WHERE competition_id = ? AND user_id = ?').get(competitionId, userId);
-  const live = !!c && now >= c.starts_at && now < c.ends_at;
+  // Points can be collected as soon as you join, before the contest opens, until it ends.
+  const live = !!c && now < c.ends_at;
   const used = db
     .prepare(
       "SELECT COUNT(*) AS n FROM ad_sessions WHERE user_id = ? AND competition_id = ? AND purpose = 'points' AND rewarded_at >= ? AND rewarded_at < ?",

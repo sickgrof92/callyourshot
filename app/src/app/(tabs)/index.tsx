@@ -113,8 +113,8 @@ export default function Contests() {
     setError(null);
     try {
       await api.joinContest(token, c.id);
-      if (c.status === 'live') contests.setActive(c.id);
-      setParty({ title: "YOU'RE IN!", subtitle: c.status === 'live' ? `${c.name} · now playing` : c.name, color: colors.neon });
+      contests.setActive(c.id);
+      setParty({ title: "YOU'RE IN!", subtitle: `${c.name} · now playing`, color: colors.neon });
     } catch (err) {
       warn();
       setError(err instanceof ApiError ? JOIN_ERRORS[err.code] ?? 'Something went wrong.' : 'Could not reach the server.');
