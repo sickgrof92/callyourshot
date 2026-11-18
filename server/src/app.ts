@@ -366,8 +366,10 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
   });
 
   // Give up a pending pick as a loss (needs a completed forfeit ad). Nothing is refunded.
-  app.post('/parlays', async (req, reply) => {
+  // Make a parlay or round robin, or (with :groupId) change one whose first game hasn't started.
+  const parlayRoute = async (req: FastifyRequest, reply: import('fastify').FastifyReply) => {
     const u = requireUser(req);
+    const groupId = (req.params as { groupId?: string }).groupId;
     const leg = z.object({
       eventId: z.string(),
       market: z.enum(['moneyline', 'spread', 'total']),
@@ -384,7 +386,7 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
         adSessionId: z.string().optional(),
       })
       .parse(req.body);
-    const res = placeParlay(db, cfg, u.id, body, clock());
+    const res = placeParlay(db, cfg, u.id, { ...body, replaceGroupId: groupId }, clock());
     if (res.ok) return res;
     const status = {
       not_joined: 403,
@@ -401,9 +403,12 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
       not_enough_points: 402,
       pick_ad_required: 403,
       line_moved: 409,
+      not_pending: 409,
     }[res.error];
     return reply.code(status).send(res);
-  });
+  };
+  app.post('/parlays', parlayRoute);
+  app.post('/parlays/:groupId/change', parlayRoute);
 
   app.post('/picks/:id/change', async (req, reply) => {
     const u = requireUser(req);

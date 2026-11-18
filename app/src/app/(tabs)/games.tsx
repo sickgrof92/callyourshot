@@ -4,13 +4,14 @@ import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View
 import { Celebration, type CelebrationInfo } from '../../components/Celebration';
 import { ContestSwitcher } from '../../components/ContestSwitcher';
 import { GameButton } from '../../components/GameButton';
-import { ParlaySheet, PARLAY_MAX } from '../../components/ParlaySheet';
+import { ParlaySheet, PARLAY_MAX, type ParlayChange } from '../../components/ParlaySheet';
 import { PickSheet, type Changing, type PickTarget } from '../../components/PickSheet';
 import { PushOffer } from '../../components/PushOffer';
 import { shouldOfferPush } from '../../lib/notifications';
 import { api, API_URL, type Game, type Market, type Selection } from '../../lib/api';
 import { ago, gameTime, signed } from '../../lib/format';
 import { useContests } from '../../lib/contests';
+import { useSession } from '../../lib/session';
 import { tap } from '../../lib/haptics';
 import { colors, glow, space } from '../../lib/theme';
 
@@ -103,7 +104,9 @@ export default function Games() {
   const { active } = useContests();
   const [offerPush, setOfferPush] = useState(false);
   // Opened from My Picks to change a pick: show only that game.
-  const params = useLocalSearchParams<{ change?: string; event?: string; sport?: string; points?: string }>();
+  const params = useLocalSearchParams<{ change?: string; event?: string; sport?: string; points?: string; parlay?: string }>();
+  const { token } = useSession();
+  const [parlayChange, setParlayChange] = useState<ParlayChange | null>(null);
   const [changing, setChanging] = useState<(Changing & { eventId: string }) | null>(null);
   useEffect(() => {
     if (params.change && params.event) {
@@ -115,6 +118,49 @@ export default function Games() {
   const inContest = active
     ? games.filter((g) => Date.parse(g.startsAt) >= Date.parse(active.startsAt) && Date.parse(g.expectedEndsAt) <= Date.parse(active.endsAt))
     : games;
+  // Opened from My Picks to change a parlay or round robin: load its picks into the slip.
+  useEffect(() => {
+    const groupId = params.parlay;
+    if (!groupId || !token) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const group = (await api.myPicks(token)).picks.filter((p) => p.group_id === groupId && p.market === 'parlay');
+        if (group.length === 0) return;
+        const legs = [...new Map(group.flatMap((p) => p.legs ?? []).map((l) => [l.event_id, l])).values()];
+        const bySport = new Map<string, Game[]>();
+        for (const sp of new Set(legs.map((l) => l.sport))) bySport.set(sp, (await api.lines(sp)).events);
+        const picked: PickTarget[] = [];
+        for (const l of legs) {
+          const game = bySport.get(l.sport)?.find((g) => g.id === l.event_id);
+          const quote = game?.lines[l.market]?.[l.selection];
+          if (game && quote) picked.push({ game, market: l.market, selection: l.selection, quote });
+        }
+        if (cancelled) return;
+        const robin = group[0]!.selection === 'round_robin';
+        setParlayChange({
+          groupId,
+          points: group[0]!.points,
+          total: group.reduce((n, p) => n + p.points, 0),
+          sizes: robin ? [...new Set(group.map((p) => p.legs?.length ?? 0))].sort((a, b) => a - b) : null,
+        });
+        setMode('parlay');
+        setSlip(picked);
+        setSlipOpen(true);
+      } catch {
+        // Leave Games as it is; the player can try again from My Picks.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [params.parlay, token]);
+  const stopParlayChange = () => {
+    setParlayChange(null);
+    setSlip([]);
+    setSlipOpen(false);
+    router.setParams({ parlay: undefined });
+  };
   const stopChanging = () => {
     setChanging(null);
     router.setParams({ change: undefined, event: undefined, sport: undefined, points: undefined });
@@ -170,7 +216,7 @@ export default function Games() {
           </Pressable>
         ))}
       </ScrollView>
-      {!changing && active && (
+      {!changing && !parlayChange && active && (
         <View style={styles.modes}>
           {(['single', 'parlay'] as const).map((m) => (
             <Pressable
@@ -187,6 +233,14 @@ export default function Games() {
       )}
       {!changing && mode === 'parlay' && slip.length === 0 && (
         <Text style={styles.hint}>Tap a line on each game you want in your parlay (one per game).</Text>
+      )}
+      {parlayChange && (
+        <View style={styles.changeBar}>
+          <Text style={styles.changeText}>Changing your parlay: swap, add or remove picks, then tap Review.</Text>
+          <Pressable onPress={stopParlayChange} hitSlop={10} accessibilityRole="button">
+            <Text style={styles.changeCancel}>Cancel</Text>
+          </Pressable>
+        </View>
       )}
       {changing && (
         <View style={styles.changeBar}>
@@ -225,7 +279,7 @@ export default function Games() {
             <Text style={styles.slipText}>{slip.length} {slip.length === 1 ? 'pick' : 'picks'} in your parlay</Text>
             <Text style={styles.slipSub}>{slipNote ?? (slip.length < 2 ? 'Add at least one more game.' : 'Ready when you are.')}</Text>
           </View>
-          <Pressable onPress={() => setSlip([])} hitSlop={8} accessibilityRole="button">
+          <Pressable onPress={() => (parlayChange ? stopParlayChange() : setSlip([]))} hitSlop={8} accessibilityRole="button">
             <Text style={styles.changeCancel}>Clear</Text>
           </Pressable>
           <GameButton title="Review" size="sm" disabled={slip.length < 2} onPress={() => setSlipOpen(true)} />
@@ -236,10 +290,16 @@ export default function Games() {
         legs={slip}
         onRemove={(eventId) => setSlip((cur) => cur.filter((x) => x.game.id !== eventId))}
         onQuote={(eventId, quote) => setSlip((cur) => cur.map((x) => (x.game.id === eventId ? { ...x, quote } : x)))}
+        changing={parlayChange}
         onClose={() => setSlipOpen(false)}
         onPlaced={(title, subtitle) => {
           setSlipOpen(false);
           setSlip([]);
+          if (parlayChange) {
+            setParlayChange(null);
+            setMode('single');
+            router.setParams({ parlay: undefined });
+          }
           setParty({ title, subtitle, color: colors.win });
         }}
       />

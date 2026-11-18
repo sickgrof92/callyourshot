@@ -160,6 +160,29 @@ describe('parlays', () => {
     expect((await s.app.inject({ method: 'POST', url: `/picks/${id}/change`, headers: auth(p.token), payload: { market: 'moneyline', selection: 'home', points: 5 } })).statusCode).toBe(404);
   });
 
+  it('can be changed, round robins included, until its first game starts', async () => {
+    const s = await setup();
+    const p = await s.player('changer', 40);
+    const change = async (groupId: string, payload: object) =>
+      s.app.inject({ method: 'POST', url: `/parlays/${groupId}/change`, headers: auth(p.token), payload: { competitionId: s.cid, ...payload } });
+    const made = (await s.parlay(p.token, { legs: LEGS, sizes: [2], points: 10, adSessionId: await s.ad(p.token) })).json();
+    expect(s.balance(p.uid)).toBe(10);
+    // The 30 points come back, so a 40-point parlay fits.
+    expect((await change(made.groupId, { legs: LEGS, points: 40 })).json().error).toBe('pick_ad_required');
+    const res = await change(made.groupId, { legs: [LEGS[0], { eventId: 'g4', market: 'total', selection: 'under' }], points: 40, adSessionId: await s.ad(p.token) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ groupId: made.groupId, totalPoints: 40, balance: 0 });
+    const mine = (await s.app.inject({ method: 'GET', url: '/picks', headers: auth(p.token) })).json().picks;
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ selection: 'parlay', points: 40 });
+    expect(mine[0].legs.map((l: { event_id: string }) => l.event_id).sort()).toEqual(['g1', 'g4']);
+    expect((await change(made.groupId, { legs: LEGS, points: 41, adSessionId: await s.ad(p.token) })).json().error).toBe('not_enough_points');
+    // Once its first game starts, it's locked.
+    s.setClock(et(2026, 11, 21, 19, 1));
+    expect((await change(made.groupId, { legs: [LEGS[2], { eventId: 'g4', market: 'total', selection: 'over' }], points: 10, adSessionId: await s.ad(p.token) })).json().error).toBe('locked');
+    expect(s.balance(p.uid)).toBe(0);
+  });
+
   it('has the helpers it needs', () => {
     expect(combinations([1, 2, 3, 4], 2)).toHaveLength(6);
     expect(combinations([1, 2, 3, 4], 3)).toEqual([[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]);

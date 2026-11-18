@@ -24,6 +24,16 @@ export const ROUND_ROBIN_MAX = 8;
 
 const MAX_POINTS = 500;
 
+/** A parlay or round robin being changed. */
+export interface ParlayChange {
+  groupId: string;
+  /** Points on each parlay now. */
+  points: number;
+  /** Points on all of them now: these come back when it's changed. */
+  total: number;
+  sizes: number[] | null;
+}
+
 function mult(price: number) {
   return price > 0 ? 1 + price / 100 : 1 + 100 / Math.abs(price);
 }
@@ -50,8 +60,10 @@ export function ParlaySheet({
   onQuote,
   onClose,
   onPlaced,
+  changing,
 }: {
   open: boolean;
+  changing?: ParlayChange | null;
   legs: PickTarget[];
   onRemove: (eventId: string) => void;
   /** A line moved: update that pick's quote. */
@@ -69,6 +81,14 @@ export function ParlaySheet({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  // Start from the parlay being changed.
+  useEffect(() => {
+    if (!changing) return;
+    setKind(changing.sizes ? 'robin' : 'parlay');
+    if (changing.sizes) setSizes(changing.sizes);
+    setPoints(changing.points);
+  }, [changing?.groupId]);
+
   const n = legs.length;
   const canRobin = n >= ROUND_ROBIN_MIN && n <= ROUND_ROBIN_MAX;
   const robin = kind === 'robin' && canRobin;
@@ -79,7 +99,7 @@ export function ParlaySheet({
     [robin, validSizes.join(','), legs],
   );
   const count = sets.length;
-  const balance = active?.mine?.balance ?? 0;
+  const balance = (active?.mine?.balance ?? 0) + (changing?.total ?? 0);
   const maxEach = count > 0 ? Math.min(MAX_POINTS, Math.floor(balance / count)) : 0;
   const total = points * count;
   const bestReturn = sets.reduce((sum, set) => sum + parlayReturn(points, set.map((l) => l.quote.price)), 0);
@@ -122,9 +142,9 @@ export function ParlaySheet({
         sizes: robin ? validSizes : undefined,
         points,
         adSessionId,
-      });
+      }, changing?.groupId);
       await refresh();
-      onPlaced(robin ? 'ROUND ROBIN IN!' : 'PARLAY LOCKED IN!', robin ? `${count} parlays × ${points} pts` : `${n} picks · ${points} pts`);
+      onPlaced(changing ? (robin ? 'ROUND ROBIN CHANGED!' : 'PARLAY CHANGED!') : robin ? 'ROUND ROBIN IN!' : 'PARLAY LOCKED IN!', robin ? `${count} parlays × ${points} pts` : `${n} picks · ${points} pts`);
     } catch (err) {
       if (err instanceof ApiError) {
         const ev = typeof err.body.eventId === 'string' ? err.body.eventId : null;
@@ -136,7 +156,9 @@ export function ParlaySheet({
           setMessage(`The line on ${name} just changed. Check it and confirm again.`);
           return; // keep the ad: nothing was used
         }
-        if (err.code === 'locked') setMessage(`${name} has started, so it can't be in a parlay. Remove it and try again.`);
+        if (err.code === 'locked' && !ev) setMessage("Your parlay's first game has started, so it can't be changed now.");
+        else if (err.code === 'not_pending') setMessage('That parlay has already been graded or forfeited.');
+        else if (err.code === 'locked') setMessage(`${name} has started, so it can't be in a parlay. Remove it and try again.`);
         else if (err.code === 'after_contest_end') setMessage(`${name} won't be over before your contest ends. Remove it and try again.`);
         else if (err.code === 'same_game') setMessage('A parlay can only have one pick per game.');
         else if (err.code === 'not_enough_points') setMessage("You don't have enough points for this.");
@@ -155,7 +177,8 @@ export function ParlaySheet({
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={styles.sheet}>
-        {active && <Text style={styles.contest}>IN: {active.name.toUpperCase()}</Text>}
+        {active && <Text style={styles.contest}>{changing ? 'CHANGING YOUR PARLAY' : `IN: ${active.name.toUpperCase()}`}</Text>}
+        {changing && <Text style={styles.help}>Your {changing.total} pts on the old one come back, and these picks replace it. You can add or remove games too.</Text>}
         <View style={styles.tabs}>
           {(['parlay', 'robin'] as const).map((k) => {
             const on = (k === 'robin') === robin;
@@ -231,7 +254,7 @@ export function ParlaySheet({
         ) : adSessionId ? (
           <>
             <View style={styles.confirmBox}>
-              <Text style={styles.confirmTitle}>{robin ? 'Confirm your round robin' : 'Confirm your parlay'}</Text>
+              <Text style={styles.confirmTitle}>{changing ? 'Confirm your change' : robin ? 'Confirm your round robin' : 'Confirm your parlay'}</Text>
               <Text style={styles.confirmLine}>{robin ? `${count} parlays × ${points} pts = ${total} pts` : `${points} pts on a ${n}-pick parlay`}</Text>
               <Text style={styles.ret}>
                 {robin ? 'If every pick wins, get back ' : 'Win and get back '}

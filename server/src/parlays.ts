@@ -11,6 +11,8 @@
 // The player pays for all of them up front.
 //
 // Both take one ad, like a single pick, and lock when their first game starts.
+// Until then, a parlay or a whole round robin can be changed (another ad): the
+// old one is taken back, its points are returned, and the new one is placed.
 
 import { randomUUID } from 'node:crypto';
 import { consumeAd } from './ads.ts';
@@ -48,6 +50,8 @@ export interface ParlayInput {
   /** Points on each parlay. A round robin costs this times the number of parlays. */
   points: number;
   adSessionId?: string;
+  /** Change this parlay or round robin (its group id) instead of making a new one. */
+  replaceGroupId?: string;
 }
 
 export type ParlayError =
@@ -63,7 +67,8 @@ export type ParlayError =
   | 'wrong_sport'
   | 'no_line'
   | 'not_enough_points'
-  | 'pick_ad_required';
+  | 'pick_ad_required'
+  | 'not_pending';
 
 export type ParlayResult =
   | { ok: true; groupId: string; pickIds: string[]; totalPoints: number; balance: number }
@@ -133,11 +138,33 @@ export function placeParlay(db: DB, cfg: Config, userId: string, input: ParlayIn
       priced.push({ ...leg, point: line.point, price: line.price });
     }
 
+    // Changing: the parlay(s) being replaced must all still be waiting on their first game.
+    let refund = 0;
+    if (input.replaceGroupId) {
+      const old = db
+        .prepare(
+          `SELECT p.id, p.status, p.stake, p.forfeited_at, p.competition_id,
+                  (SELECT MIN(e.commence_time) FROM parlay_legs l JOIN events e ON e.id = l.event_id WHERE l.pick_id = p.id) AS first_start
+           FROM picks p WHERE p.group_id = ? AND p.user_id = ? AND p.market = 'parlay'`,
+        )
+        .all(input.replaceGroupId, userId) as { id: string; status: string; stake: number; forfeited_at: number | null; competition_id: string; first_start: number }[];
+      if (old.length === 0 || old.some((o) => o.competition_id !== input.competitionId)) return { ok: false, error: 'not_found' };
+      if (old.some((o) => o.status !== 'pending' || o.forfeited_at !== null)) return { ok: false, error: 'not_pending' };
+      if (old.some((o) => now >= o.first_start)) return { ok: false, error: 'locked' };
+      refund = old.reduce((n, o) => n + o.stake, 0);
+    }
+
     const sets = roundRobin ? input.sizes!.flatMap((k) => combinations(priced, k)) : [priced];
     const totalPoints = input.points * sets.length;
-    if (totalPoints > entryBalance(db, input.competitionId, userId)) return { ok: false, error: 'not_enough_points' };
-    const groupId = randomUUID();
-    if (!consumeAd(db, userId, input.adSessionId, 'pick', groupId, now)) return { ok: false, error: 'pick_ad_required' };
+    if (totalPoints > entryBalance(db, input.competitionId, userId) + refund) return { ok: false, error: 'not_enough_points' };
+    const groupId = input.replaceGroupId ?? randomUUID();
+    if (!consumeAd(db, userId, input.adSessionId, 'pick', input.replaceGroupId ? `change:${groupId}:${now}` : groupId, now)) {
+      return { ok: false, error: 'pick_ad_required' };
+    }
+    if (input.replaceGroupId) {
+      db.prepare("DELETE FROM picks WHERE group_id = ? AND user_id = ? AND market = 'parlay'").run(groupId, userId); // legs go with them
+      postLedger(db, { userId, competitionId: input.competitionId, kind: 'pick_stake', amount: refund, ref: groupId, at: now });
+    }
 
     const insertPick = db.prepare(
       `INSERT INTO picks (id, user_id, competition_id, event_id, market, selection, point, price, stake, created_at, group_id)

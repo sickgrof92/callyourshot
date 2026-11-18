@@ -20,7 +20,7 @@ const RULES: [string, string][] = [
   ],
   [
     'Parlays and round robins',
-    "A parlay combines 2 to 10 picks, each on a different game, into one pick with one amount of points. It wins only if every pick in it wins, and pays the combined line of all of its picks. If any pick loses, the parlay loses. A pick that ends in a push, or whose game is postponed or cancelled, is dropped, and the parlay is paid on the picks that are left; if every pick is dropped, the points are returned in full. A round robin takes 3 to 8 picks and makes every parlay of the sizes you choose (for example, every 2-pick parlay), each with the same points, and each graded as its own parlay. A parlay or round robin is confirmed with one short ad, can't be changed once made, and can be forfeited once its first game has started.",
+    "A parlay combines 2 to 10 picks, each on a different game, into one pick with one amount of points. It wins only if every pick in it wins, and pays the combined line of all of its picks. If any pick loses, the parlay loses. A pick that ends in a push, or whose game is postponed or cancelled, is dropped, and the parlay is paid on the picks that are left; if every pick is dropped, the points are returned in full. A round robin takes 3 to 8 picks and makes every parlay of the sizes you choose (for example, every 2-pick parlay), each with the same points, and each graded as its own parlay. A parlay or round robin is confirmed with one short ad. Until its first game starts, it can be changed by watching a short ad, just like a single pick: the points on the old one go toward the new one. Once its first game has started, it can be forfeited.",
   ],
   [
     'Forfeiting',
