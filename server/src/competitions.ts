@@ -17,7 +17,7 @@ import { randomUUID } from 'node:crypto';
 import type { Config } from './config.ts';
 import { openClaim } from './claims.ts';
 import { tx, type DB } from './db.ts';
-import { DAY, zonedParts, zonedToEpoch } from './time.ts';
+import { DAY, HOUR, sportsDay, zonedParts, zonedToEpoch } from './time.ts';
 
 export const KINDS = ['daily', 'weekly', 'monthly'] as const;
 export type Kind = (typeof KINDS)[number];
@@ -410,29 +410,51 @@ export function browseContests(db: DB, f: ContestFilter, now: number, userId: st
   return { rows: rows.slice(0, limit), more: rows.length > limit };
 }
 
+const TEST_PRIZE = {
+  prize: 'Test prize (for testing only)',
+  prizeDetails: 'A test contest made automatically while SEED_TEST_CONTEST is on. No real prize is sent.',
+  prizeValue: 0,
+  maxEntries: 1000,
+};
+
+/** Local time of day (hour, minute in the app's time zone) the daily test contest opens. */
+export const TEST_DAILY_OPENS = { hour: 8, minute: 30 };
+
 /**
- * For testing: when no contest is live or upcoming, make a week-long,
- * all-sport contest that starts in a minute and ends at the start of the sports day
- * (5 AM ET by default) 7 days later. Returns it, or null if none was needed.
+ * For testing (SEED_TEST_CONTEST): make sure there is
+ *  - a week-long, all-sport contest, made when none is live or upcoming. It
+ *    starts in a minute and ends at the start of the sports day (5 AM ET by
+ *    default) 7 days later;
+ *  - a daily, all-sport contest for today's sports day, opening at 8:30 AM ET
+ *    (or in a minute, if that has passed) and ending at 5 AM ET the next morning.
+ * Returns the contests it made.
  */
-export function ensureTestContest(db: DB, cfg: Config, now: number): Competition | null {
-  if (db.prepare('SELECT 1 FROM competitions WHERE ends_at > ?').get(now)) return null;
-  const p = zonedParts(now, cfg.timeZone);
-  const endsAt = zonedToEpoch(p.year, p.month, p.day + 7, cfg.dayStartHour, cfg.timeZone);
-  const r = createCompetition(
-    db,
-    {
-      name: 'Test week: all sports',
-      kind: 'weekly',
-      prize: 'Test prize (for testing only)',
-      prizeDetails: 'A test contest made automatically while SEED_TEST_CONTEST is on. Nothing is awarded.',
-      prizeValue: 0,
-      maxEntries: 1000,
-      // A minute out, since contests must be announced before they start.
-      startsAt: now + 60_000,
-      endsAt,
-    },
-    now,
-  );
-  return r.ok ? r.value : null;
+export function ensureTestContests(db: DB, cfg: Config, now: number): Competition[] {
+  const made: Competition[] = [];
+  // Contests must be announced before they start, so the earliest start is a minute out.
+  const soon = now + 60_000;
+  const tz = cfg.timeZone;
+
+  if (!db.prepare("SELECT 1 FROM competitions WHERE kind <> 'daily' AND ends_at > ?").get(now)) {
+    const p = zonedParts(now, tz);
+    const r = createCompetition(
+      db,
+      { ...TEST_PRIZE, name: 'Test week: all sports', kind: 'weekly', startsAt: soon, endsAt: zonedToEpoch(p.year, p.month, p.day + 7, cfg.dayStartHour, tz) },
+      now,
+    );
+    if (r.ok) made.push(r.value);
+  }
+
+  const day = sportsDay(now, tz, cfg.dayStartHour);
+  if (!db.prepare("SELECT 1 FROM competitions WHERE kind = 'daily' AND ends_at = ?").get(day.end) && day.end - soon > HOUR) {
+    const d = zonedParts(day.start, tz);
+    const opens = zonedToEpoch(d.year, d.month, d.day, TEST_DAILY_OPENS.hour, tz) + TEST_DAILY_OPENS.minute * 60_000;
+    const r = createCompetition(
+      db,
+      { ...TEST_PRIZE, name: `Test day: ${fmtDay(day.start, tz)}`, kind: 'daily', startsAt: Math.max(opens, soon), endsAt: day.end },
+      now,
+    );
+    if (r.ok) made.push(r.value);
+  }
+  return made;
 }
