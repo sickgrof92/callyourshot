@@ -253,7 +253,13 @@ export const api = {
       points: number;
       adSessionId: string;
     },
-  ) => request<{ groupId: string; pickIds: string[]; totalPoints: number; balance: number }>('/parlays', { method: 'POST', body, token }),
+    /** Change this parlay or round robin (its group id) instead of making a new one. */
+    changeGroupId?: string,
+  ) =>
+    request<{ groupId: string; pickIds: string[]; totalPoints: number; balance: number }>(
+      changeGroupId ? `/parlays/${encodeURIComponent(changeGroupId)}/change` : '/parlays',
+      { method: 'POST', body, token },
+    ),
   myPicks: (token: string, competitionId?: string) =>
     request<{ picks: Pick[] }>(`/picks${competitionId ? `?competitionId=${encodeURIComponent(competitionId)}` : ''}`, { token }),
   changePick: (

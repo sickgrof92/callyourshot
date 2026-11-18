@@ -167,6 +167,16 @@ export default function MyPicks() {
               </Text>
               <Text style={[styles.result, { color: s.color }]}>{result(p)}</Text>
             </View>
+            {p.status === 'pending' && !p.forfeited_at && p.market === 'parlay' && p.group_id && !picks.some((q) => q.group_id === p.group_id && started(q)) && (
+              <GameButton
+                title={p.selection === 'round_robin' ? 'Change this round robin' : 'Change this parlay'}
+                variant="ghost"
+                size="sm"
+                icon="swap-horizontal"
+                style={{ marginTop: space.sm }}
+                onPress={() => router.push({ pathname: '/games', params: { parlay: p.group_id! } })}
+              />
+            )}
             {p.status === 'pending' && !started(p) && p.market !== 'parlay' && (
               <GameButton
                 title="Change this pick"
