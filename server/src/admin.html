@@ -457,8 +457,6 @@
   });
   $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('loginBtn').click(); });
 
-  if (token) load().catch(() => {}); else $('login').classList.remove('hidden');
-})();
   $('linesBtn').addEventListener('click', async () => {
     const sport = $('linesSport').value;
     $('linesBtn').disabled = true;
@@ -472,6 +470,8 @@
       $('linesBtn').disabled = false;
     }
   });
+  if (token) load().catch(() => {}); else $('login').classList.remove('hidden');
+})();
 </script>
 </body>
 </html>
