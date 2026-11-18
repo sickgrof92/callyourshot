@@ -2,6 +2,8 @@
 
 This takes about 20 minutes the first time. You'll put the server online for free with Render, then open the app on your phone with Expo Go. It works the same on Android and iPhone; the only differences are where you get Expo Go and how you scan the QR code.
 
+To give the app to other testers through Google Play (a real installable build, needed for Play's 14-day closed test), see [ANDROID_TESTING.md](ANDROID_TESTING.md).
+
 ## Part 1: Put the server online (Render)
 
 1. Go to [render.com](https://render.com) and sign up with your GitHub account.
