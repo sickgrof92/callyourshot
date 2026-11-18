@@ -7,7 +7,8 @@ services:
     plan: free
     rootDir: server
     buildCommand: npm ci
-    startCommand: npm start
+    # Runs node directly (not through npm) so it gets Render's shutdown signal and can save a last copy of the data.
+    startCommand: node --disable-warning=ExperimentalWarning --import tsx src/index.ts
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -38,7 +39,13 @@ services:
         generateValue: true
       - key: DB_PATH
         value: ./data/callyourshot.db
-    # The free plan has no persistent disk: the database resets whenever the
+      # Keeps the data when the free server restarts, redeploys or sleeps: a free
+      # Postgres (Neon) holds a copy of the database. Paste its connection string
+      # here (see TESTING.md, "Keep your data"). Without it, data resets on restart.
+      - key: DATABASE_URL
+        sync: false
+    # The free plan has no persistent disk. With DATABASE_URL set (above), the
+    # data is kept in Neon instead, so this is optional. Without it, the database resets whenever the
     # service restarts or redeploys. That is fine for testing. Before real
     # players join, switch to the Starter plan and uncomment this disk, then
     # change DB_PATH to /var/data/callyourshot.db.

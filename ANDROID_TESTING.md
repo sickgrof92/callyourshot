@@ -7,7 +7,7 @@ The build talks to your Render server and follows its settings. While Render has
 ## Before you start
 
 - **Check the server address.** `app/eas.json` points builds at `https://callyourshot-api.onrender.com`. If your Render URL is different, change both `EXPO_PUBLIC_API_URL` lines in `app/eas.json` to your URL (no slash at the end). The address is built into the app, so a wrong one means rebuilding.
-- **Know the free-plan limits.** On Render's free plan, the database resets on every redeploy and whenever the server restarts. Testers will lose their contests and points each time. For a 14-day test that's annoying but OK, since Google only counts opt-ins, not progress. Move to the Starter plan with a disk (LAUNCH.md, step 1) if you want testers to keep their progress.
+- **Keep testers' data.** Set up `DATABASE_URL` first (TESTING.md, "Keep your data"). Without it, Render's free plan wipes every account, contest and point whenever the server restarts, redeploys or sleeps.
 
 ## Part 1: Expo account and first build (about 30 minutes, mostly waiting)
 

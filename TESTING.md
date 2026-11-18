@@ -34,9 +34,25 @@ The repo includes a GitHub workflow called **"Keep Render server awake (pings ev
 
 Check that it works: click the repo's **Actions** tab, then **Keep Render server awake** in the left list, then **Run workflow** > **Run workflow**. Open the new run. It should show a green check and a note saying "Server is awake". If it shows a yellow warning saying "RENDER_URL not set", go back and check step 5. After this it runs on its own every 10 minutes.
 
+### Keep your data (free, about 5 minutes)
+
+Render's free plan has no lasting disk, so without this step every restart, redeploy or nap wipes all accounts, contests, points and picks. The fix is to give the server a free Postgres database at Neon, where it keeps a copy of its data. It saves a new copy every minute when something changes, saves again just before Render stops it, and loads the copy back when it starts.
+
+1. Go to [neon.tech](https://neon.tech) and sign up (the **Free** plan; signing in with GitHub or Google is fine). No credit card is needed.
+2. Create a project. Name: `callyourshot`. Region: pick the one closest to your Render server's region (Render shows it on the service page; for **Oregon** pick **US West**, for **Ohio** or **Virginia** pick **US East**). Leave everything else as it is.
+3. On the project's dashboard, click **Connect**. Copy the **connection string**. It starts with `postgresql://` and ends with something like `?sslmode=require`. It contains a password, so don't share it or put it in the code.
+4. In Render, open the `callyourshot-api` service > **Environment** > **Add Environment Variable**:
+   - Key: `DATABASE_URL`
+   - Value: paste the connection string
+5. Click **Save, rebuild, and deploy**.
+6. Check it worked: open the service's **Logs**. After the deploy you should see **"No saved copy of the database yet: starting fresh."** From then on, each start says **"Restored the saved copy of the database."** If you see **"DATABASE_URL is not set"**, check step 4.
+
+This setup wipes the data one last time (the deploy in step 5). After that, it's kept.
+
 ### Good to know about the free plan
 
-- **The database resets whenever the server restarts or redeploys** (for example, after new code is merged). Test accounts, points and picks start over. That's fine for testing. Before real players join, switch to Render's Starter plan with a disk (instructions are in `render.yaml`).
+- **Without `DATABASE_URL` (above), the database resets whenever the server restarts, redeploys or sleeps.** With it, data is kept. At most the last minute of changes could be lost if the server crashes outright.
+- The free Neon plan is plenty for testing and early launch. Before real players join, you can still move to Render's Starter plan with a disk (instructions are in `render.yaml`).
 - After a restart, the server may spend a few extra Odds API credits reloading lines.
 
 ## Part 2: Run the app on your phone
