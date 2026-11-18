@@ -2,10 +2,10 @@
 //
 // Every ad view has a purpose, chosen when the app starts the session:
 //  - points:  grants AD_REWARD_POINTS points in one contest, only while the
-//             player is out of points there (balance below the minimum pick
-//             and no picks still in play in that contest), at most
-//             POINTS_ADS_PER_DAY times a day per contest. Everyone starts a
-//             contest at 0, so their first points come from this too and count.
+//             player is out of points there (exactly 0 and no picks still in
+//             play in that contest). The first one in a contest is the
+//             player's starting points and is not a refill; after that, at
+//             most POINTS_ADS_PER_DAY refills a day per contest.
 //  - pick:    grants no points. A completed pick ad unlocks exactly one pick.
 //  - forfeit: grants no points. Lets the player give up one pending pick as a
 //             loss, so they can get back to 0 and earn points sooner.
@@ -37,7 +37,10 @@ export const PICK_AD_WINDOW_MS = 30 * 60 * 1000;
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 
 export interface AdEligibility {
+  /** Refills used today in this contest (the starting points don't count). */
   pointsAdsToday: number;
+  /** Whether the player has collected their starting points in this contest yet. */
+  hasStartingPoints: boolean;
   pointsAdsPerDay: number;
   /** Out of points in this contest (exactly 0, nothing in play) with refills left today. */
   canEarnPoints: boolean;
@@ -60,14 +63,20 @@ export function adEligibility(db: DB, cfg: Config, userId: string, competitionId
       "SELECT COUNT(*) AS n FROM ad_sessions WHERE user_id = ? AND competition_id = ? AND purpose = 'points' AND rewarded_at >= ? AND rewarded_at < ?",
     )
     .get(userId, competitionId, day.start, day.end) as { n: number };
+  // The first points video in a contest is the starting points, not a refill.
+  const first = db
+    .prepare("SELECT MIN(rewarded_at) AS t FROM ad_sessions WHERE user_id = ? AND competition_id = ? AND purpose = 'points' AND rewarded_at IS NOT NULL")
+    .get(userId, competitionId) as { t: number | null };
+  const refillsToday = used.n - (first.t !== null && first.t >= day.start && first.t < day.end ? 1 : 0);
   const balance = entryBalance(db, competitionId, userId);
   const pending = db
     .prepare("SELECT COUNT(*) AS n FROM picks WHERE user_id = ? AND competition_id = ? AND status = 'pending'")
     .get(userId, competitionId) as { n: number };
   return {
-    pointsAdsToday: used.n,
+    pointsAdsToday: refillsToday,
+    hasStartingPoints: first.t !== null,
     pointsAdsPerDay: cfg.pointsAdsPerDay,
-    canEarnPoints: joined && live && balance === 0 && pending.n === 0 && used.n < cfg.pointsAdsPerDay,
+    canEarnPoints: joined && live && balance === 0 && pending.n === 0 && (first.t === null || refillsToday < cfg.pointsAdsPerDay),
     balance,
     pendingPicks: pending.n,
     joined,
@@ -80,7 +89,7 @@ function refusal(e: AdEligibility, cfg: Config): Refusal | null {
   if (!e.live) return 'contest_not_live';
   if (e.balance > 0) return 'not_out_of_points';
   if (e.pendingPicks > 0) return 'points_in_play';
-  if (e.pointsAdsToday >= e.pointsAdsPerDay) return 'daily_limit';
+  if (e.hasStartingPoints && e.pointsAdsToday >= e.pointsAdsPerDay) return 'daily_limit';
   return null;
 }
 

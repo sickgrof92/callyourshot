@@ -53,11 +53,13 @@ export default function Points() {
   if (m) {
     const left = Math.max(0, m.pointsAdsPerDay - m.pointsAdsToday);
     if (m.canEarnPoints) {
-      title = m.pointsAdsToday === 0 && m.balance === 0 ? 'Get your points' : "You're out of points";
-      detail = `Watch a short video to get ${me.adRewardPoints} points in this contest. ${left} of ${m.pointsAdsPerDay} refills left today.`;
+      title = !m.hasStartingPoints ? 'Get your starting points' : "You're out of points";
+      detail = !m.hasStartingPoints
+        ? `Watch a short video to get your ${me.adRewardPoints} starting points in this contest. These don't count as a refill.`
+        : `Watch a short video to get ${me.adRewardPoints} points in this contest. ${left} of ${m.pointsAdsPerDay} refills left today.`;
     } else if (m.balance > 0) {
-      title = m.balance < me.minPickPoints ? `Use your last ${m.balance} points` : 'Go make some picks';
-      detail = `You can refill once you're at exactly 0 points here with no picks in play, up to ${m.pointsAdsPerDay} times per day in each contest.${m.balance < me.minPickPoints ? ` Put all ${m.balance} on one pick to use them up.` : ''}`;
+      title = 'Go make some picks';
+      detail = `You can refill once you're at exactly 0 points here with no picks in play, up to ${m.pointsAdsPerDay} times per day in each contest. Picks can be as small as 1 point.`;
     } else if (m.picksInPlay > 0) {
       title = `Waiting on ${m.picksInPlay} pick${m.picksInPlay === 1 ? '' : 's'}`;
       detail = 'You can refill once your picks in this contest are graded. If a pick is clearly losing, you can forfeit it in My Picks to get back sooner.';

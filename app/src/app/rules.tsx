@@ -12,11 +12,15 @@ const RULES: [string, string][] = [
   ],
   [
     'Getting points',
-    'In each contest, you are awarded 10 points after watching a short ad. You can refill your points this way up to 5 times per day in each contest (your first 10 points count as one), whenever you are out of points there: exactly 0 points, with no picks still waiting to be graded. If you have fewer than 10 points left, you can use all of them on one pick. Winning picks pay points back based on how many points you picked with and the line.',
+    'In each contest, you are awarded 10 points after watching a short ad. You can refill your points this way up to 5 times per day in each contest whenever you are out of points there: exactly 0 points, with no picks still waiting to be graded. Your first 10 points when you join a contest are your starting points, not a refill: they do not count toward the 5 per day, toward refills used in tiebreakers, or toward reloads in your stats. Winning picks pay points back based on how many points you picked with and the line.',
   ],
   [
     'Making picks',
-    "You can use your points to pick the winner, the spread, or the over/under total of real games that both start and end during the contest. To make a pick, you watch a short ad before confirming it. You can make picks on a game until it officially starts. You can also change a pick at any time until its game starts, by watching a short ad. Changing a pick does not count as forfeiting: the points from your old pick go toward the new one. If a pick ends in a push (the result lands exactly on the line), the points on it are returned to you in full. Picks on games that are postponed or cancelled are refunded as soon as that is announced.",
+    "You can use your points to pick the winner, the spread, or the over/under total of real games that both start and end during the contest. You can put any whole number of points on a pick, from 1 point up to your balance in that contest. To make a pick, you watch a short ad before confirming it. You can make picks on a game until it officially starts. You can also change a pick at any time until its game starts, by watching a short ad. Changing a pick does not count as forfeiting: the points from your old pick go toward the new one. If a pick ends in a push (the result lands exactly on the line), the points on it are returned to you in full. Picks on games that are postponed or cancelled are refunded as soon as that is announced.",
+  ],
+  [
+    'Parlays and round robins',
+    "A parlay combines 2 to 10 picks, each on a different game, into one pick with one amount of points. It wins only if every pick in it wins, and pays the combined line of all of its picks. If any pick loses, the parlay loses. A pick that ends in a push, or whose game is postponed or cancelled, is dropped, and the parlay is paid on the picks that are left; if every pick is dropped, the points are returned in full. A round robin takes 3 to 8 picks and makes every parlay of the sizes you choose (for example, every 2-pick parlay), each with the same points, and each graded as its own parlay. A parlay or round robin is confirmed with one short ad, can't be changed once made, and can be forfeited once its first game has started.",
   ],
   [
     'Forfeiting',
@@ -29,7 +33,7 @@ const RULES: [string, string][] = [
   ],
   [
     'Prizes',
-    "Each contest's prize is fixed and announced before the contest starts, and will never change once it starts. The player with the most points when the contest ends will be declared its winner. The order of tiebreakers is as follows:\n•  Fewest refills used\n•  Best overall win % for the contest\n•  Total number of winning picks\n•  If players are still tied after those, each will be rewarded with the prize (however, if more than 3 players are still tied, additional tiebreaking methods may be used)",
+    "Each contest's prize is fixed and announced before the contest starts, and will never change once it starts. The player with the most points when the contest ends will be declared its winner. The order of tiebreakers is as follows:\n•  Fewest refills used (starting points are not a refill)\n•  Best overall win % for the contest\n•  Total number of winning picks\n•  If players are still tied after those, each will be rewarded with the prize (however, if more than 3 players are still tied, additional tiebreaking methods may be used)",
   ],
   [
     'Contest integrity',
@@ -39,7 +43,7 @@ const RULES: [string, string][] = [
     'Claiming your prize',
     'Winners claim their prize in the app, and must be willing to provide the legally required information in order for us to present them with said prize. If you are unwilling to provide the information we are legally required to obtain in order to provide you with your prize, that will serve as you acknowledging forfeiture of the prize.',
   ],
-  ['Your profile', 'Your display name and career stats (record, win %, best win streak and reloads) are public. Your email, phone number and location are never shown to other players.'],
+  ['Your profile', 'Your display name and career stats (record, win %, best win streak and reloads, not counting the starting points of each contest) are public. Your email, phone number and location are never shown to other players.'],
 ];
 
 export default function Rules() {

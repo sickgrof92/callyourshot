@@ -4,6 +4,7 @@ import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View
 import { Celebration, type CelebrationInfo } from '../../components/Celebration';
 import { ContestSwitcher } from '../../components/ContestSwitcher';
 import { GameButton } from '../../components/GameButton';
+import { ParlaySheet, PARLAY_MAX } from '../../components/ParlaySheet';
 import { PickSheet, type Changing, type PickTarget } from '../../components/PickSheet';
 import { PushOffer } from '../../components/PushOffer';
 import { shouldOfferPush } from '../../lib/notifications';
@@ -25,7 +26,7 @@ function cellText(market: Market, selection: Selection, point: number | null, pr
   return `${selection === 'over' ? 'O' : 'U'} ${point}  (${signed(price)})`;
 }
 
-function GameCard({ game, onPick }: { game: Game; onPick: (t: PickTarget) => void }) {
+function GameCard({ game, onPick, chosen }: { game: Game; onPick: (t: PickTarget) => void; chosen?: PickTarget }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
@@ -55,6 +56,7 @@ function GameCard({ game, onPick }: { game: Game; onPick: (t: PickTarget) => voi
                   variant="ghost"
                   size="sm"
                   disabled={!q || game.locked}
+                  selected={chosen?.market === market && chosen?.selection === sel}
                   style={{ flex: 1 }}
                   faceStyle={styles.cellFace}
                   onPress={() => q && onPick({ game, market, selection: sel, quote: q })}
@@ -80,6 +82,24 @@ export default function Games() {
   const [error, setError] = useState<string | null>(null);
   const [target, setTarget] = useState<PickTarget | null>(null);
   const [party, setParty] = useState<CelebrationInfo | null>(null);
+  // Parlay mode: tapping a line adds it to the slip (one pick per game).
+  const [mode, setMode] = useState<'single' | 'parlay'>('single');
+  const [slip, setSlip] = useState<PickTarget[]>([]);
+  const [slipOpen, setSlipOpen] = useState(false);
+  const [slipNote, setSlipNote] = useState<string | null>(null);
+  const addToSlip = (t: PickTarget) => {
+    setSlipNote(null);
+    setSlip((cur) => {
+      const same = cur.find((x) => x.game.id === t.game.id);
+      if (same && same.market === t.market && same.selection === t.selection) return cur.filter((x) => x !== same); // tap again to remove
+      if (same) return cur.map((x) => (x === same ? t : x)); // one pick per game: replace it
+      if (cur.length >= PARLAY_MAX) {
+        setSlipNote(`A parlay can have up to ${PARLAY_MAX} picks.`);
+        return cur;
+      }
+      return [...cur, t];
+    });
+  };
   const { active } = useContests();
   const [offerPush, setOfferPush] = useState(false);
   // Opened from My Picks to change a pick: show only that game.
@@ -150,6 +170,24 @@ export default function Games() {
           </Pressable>
         ))}
       </ScrollView>
+      {!changing && active && (
+        <View style={styles.modes}>
+          {(['single', 'parlay'] as const).map((m) => (
+            <Pressable
+              key={m}
+              onPress={() => { tap(); setMode(m); }}
+              style={[styles.mode, mode === m && styles.modeOn]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: mode === m }}
+            >
+              <Text style={[styles.modeText, mode === m && styles.modeTextOn]}>{m === 'single' ? 'Single pick' : 'Parlay / Round robin'}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {!changing && mode === 'parlay' && slip.length === 0 && (
+        <Text style={styles.hint}>Tap a line on each game you want in your parlay (one per game).</Text>
+      )}
       {changing && (
         <View style={styles.changeBar}>
           <Text style={styles.changeText}>Changing your pick: tap a new line on this game.</Text>
@@ -163,7 +201,13 @@ export default function Games() {
         keyExtractor={(g) => g.id}
         contentContainerStyle={{ padding: space.lg, gap: space.md }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />}
-        renderItem={({ item }) => <GameCard game={item} onPick={(t) => (active ? setTarget(t) : router.push('/'))} />}
+        renderItem={({ item }) => (
+          <GameCard
+            game={item}
+            chosen={mode === 'parlay' && !changing ? slip.find((x) => x.game.id === item.id) : undefined}
+            onPick={(t) => (!active ? router.push('/') : mode === 'parlay' && !changing ? addToSlip(t) : setTarget(t))}
+          />
+        )}
         ListEmptyComponent={
           <Text style={styles.empty}>
             {error ??
@@ -174,6 +218,30 @@ export default function Games() {
                   : 'No upcoming games right now. Check back soon.')}
           </Text>
         }
+      />
+      {!changing && mode === 'parlay' && slip.length > 0 && (
+        <View style={styles.slipBar}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.slipText}>{slip.length} {slip.length === 1 ? 'pick' : 'picks'} in your parlay</Text>
+            <Text style={styles.slipSub}>{slipNote ?? (slip.length < 2 ? 'Add at least one more game.' : 'Ready when you are.')}</Text>
+          </View>
+          <Pressable onPress={() => setSlip([])} hitSlop={8} accessibilityRole="button">
+            <Text style={styles.changeCancel}>Clear</Text>
+          </Pressable>
+          <GameButton title="Review" size="sm" disabled={slip.length < 2} onPress={() => setSlipOpen(true)} />
+        </View>
+      )}
+      <ParlaySheet
+        open={slipOpen}
+        legs={slip}
+        onRemove={(eventId) => setSlip((cur) => cur.filter((x) => x.game.id !== eventId))}
+        onQuote={(eventId, quote) => setSlip((cur) => cur.map((x) => (x.game.id === eventId ? { ...x, quote } : x)))}
+        onClose={() => setSlipOpen(false)}
+        onPlaced={(title, subtitle) => {
+          setSlipOpen(false);
+          setSlip([]);
+          setParty({ title, subtitle, color: colors.win });
+        }}
       />
       <PickSheet
         target={target}
@@ -220,6 +288,15 @@ const styles = StyleSheet.create({
   noLines: { color: colors.muted, fontStyle: 'italic' },
   updated: { color: colors.muted, fontSize: 11, marginTop: space.xs },
   empty: { color: colors.muted, textAlign: 'center', marginTop: 60 },
+  modes: { flexDirection: 'row', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.md },
+  mode: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 14, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.card },
+  modeOn: { borderColor: colors.accent, backgroundColor: 'rgba(255,225,77,0.12)' },
+  modeText: { color: colors.muted, fontWeight: '800', fontSize: 13 },
+  modeTextOn: { color: colors.accent },
+  hint: { color: colors.muted, textAlign: 'center', paddingHorizontal: space.lg, paddingTop: space.sm, fontSize: 13 },
+  slipBar: { flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.cardAlt, borderTopWidth: 2, borderTopColor: colors.accent, padding: space.md },
+  slipText: { color: colors.text, fontWeight: '900' },
+  slipSub: { color: colors.muted, fontSize: 12 },
   changeBar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: 'rgba(46,242,255,0.12)', borderBottomWidth: 2, borderBottomColor: colors.neon, padding: space.md },
   changeText: { flex: 1, color: colors.text, fontWeight: '800' },
   changeCancel: { color: colors.neon, fontWeight: '900' },

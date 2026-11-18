@@ -5,10 +5,9 @@ import { api, ApiError, type Game, type LineQuote, type Market, type Selection }
 import { lineLabel, marketName, signed } from '../lib/format';
 import { useContests } from '../lib/contests';
 import { useSession } from '../lib/session';
-import { tap } from '../lib/haptics';
-import { colors, glow, space } from '../lib/theme';
+import { colors, space } from '../lib/theme';
 import { GameButton } from './GameButton';
-import { PointsCounter } from './PointsCounter';
+import { PointsPicker } from './PointsPicker';
 import { useAd } from '../lib/useAd';
 
 export interface PickTarget {
@@ -18,9 +17,9 @@ export interface PickTarget {
   quote: LineQuote;
 }
 
-const MIN = 10;
+/** Default amount for a new pick (any amount from 1 point is allowed). */
+const DEFAULT_POINTS = 10;
 const MAX = 500;
-const CHIPS = [10, 25, 50, 100];
 
 /** Points you'd get back on a win, matching the server's integer math. */
 function winReturn(points: number, price: number) {
@@ -46,7 +45,7 @@ export function PickSheet({
 }) {
   const { token } = useSession();
   const { active, refresh } = useContests();
-  const [points, setPoints] = useState(MIN);
+  const [points, setPoints] = useState(DEFAULT_POINTS);
   const [quote, setQuote] = useState<LineQuote | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -57,7 +56,7 @@ export function PickSheet({
   // Points the player can use: their balance, plus the old pick's points when changing it.
   const available = (active?.mine?.balance ?? 0) + (changing?.points ?? 0);
   useEffect(() => {
-    setPoints(changing ? Math.min(changing.points, MAX) : available > 0 && available < MIN ? available : MIN);
+    setPoints(Math.max(1, Math.min(changing ? changing.points : DEFAULT_POINTS, available, MAX)));
     setQuote(target?.quote ?? null);
     setMessage(null);
     setAdSessionId(null);
@@ -66,9 +65,7 @@ export function PickSheet({
   if (!target || !quote) return null;
   const { game, market, selection } = target;
   const maxPoints = Math.min(MAX, available);
-  // Refills only come at exactly 0, so leftover points under 10 can be used all at once.
   const tooFew = available === 0;
-  const lowest = Math.min(MIN, maxPoints);
   const noun = changing ? 'change' : 'pick';
 
   async function watchAd() {
@@ -106,7 +103,7 @@ export function PickSheet({
           setMessage('The line just changed. Check the new number and confirm again.');
         } else if (err.code === 'locked') setMessage('This game has started, so picks are locked.');
         else if (err.code === 'not_pending') setMessage('That pick has already been graded.');
-        else if (err.code === 'bad_amount') setMessage(`Picks are at least ${MIN} points, unless you're using all of your last few points.`);
+        else if (err.code === 'bad_amount') setMessage('Choose at least 1 point.');
         else if (err.code === 'already_picked') setMessage(`You already have a ${marketName[market].toLowerCase()} pick on this game.`);
         else if (err.code === 'not_enough_points') setMessage("You don't have enough points for this pick.");
         else if (err.code === 'after_contest_end') setMessage("This game won't be over before your contest ends, so it can't count in it.");
@@ -165,24 +162,7 @@ export function PickSheet({
           </>
         ) : (
           <>
-            <View style={styles.stepper}>
-              <GameButton variant="neon" size="sm" style={styles.step} onPress={() => setPoints((p) => Math.max(lowest, p - 10))}>
-                <Text style={styles.stepText}>-</Text>
-              </GameButton>
-              <PointsCounter value={points} suffix=" pts" style={[styles.points, glow(colors.accent, 10)]} />
-              <GameButton variant="neon" size="sm" style={styles.step} onPress={() => setPoints((p) => Math.min(maxPoints, p + 10))}>
-                <Text style={styles.stepText}>+</Text>
-              </GameButton>
-            </View>
-            <View style={styles.chips}>
-              {[...CHIPS.filter((c) => c <= maxPoints), maxPoints]
-                .filter((v, i, a) => a.indexOf(v) === i)
-                .map((c) => (
-                  <Pressable key={c} style={[styles.chip, points === c && styles.chipOn]} onPress={() => { tap(); setPoints(c); }}>
-                    <Text style={[styles.chipText, points === c && styles.chipTextOn]}>{c === maxPoints ? `Max ${c}` : c}</Text>
-                  </Pressable>
-                ))}
-            </View>
+            <PointsPicker value={points} max={maxPoints} onChange={setPoints} />
             <Text style={styles.ret}>
               Win and get back <Text style={{ color: colors.win, fontWeight: '800' }}>{winReturn(points, quote.price)} pts</Text>
             </Text>
@@ -203,15 +183,6 @@ const styles = StyleSheet.create({
   contest: { color: colors.pink, fontWeight: '900', fontSize: 12, letterSpacing: 1 },
   pick: { color: colors.text, fontSize: 26, fontWeight: '900' },
   meta: { color: colors.neon, fontWeight: '700' },
-  stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xl, marginTop: space.md },
-  step: { width: 52 },
-  stepText: { color: '#022A30', fontSize: 24, fontWeight: '900' },
-  points: { color: colors.accent, fontSize: 32, fontWeight: '900', minWidth: 130, textAlign: 'center' },
-  chips: { flexDirection: 'row', justifyContent: 'center', gap: space.sm, flexWrap: 'wrap' },
-  chip: { paddingVertical: 7, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.cardAlt },
-  chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipText: { color: colors.text, fontWeight: '800' },
-  chipTextOn: { color: colors.accentText, fontWeight: '900' },
   ret: { color: colors.text, textAlign: 'center', fontWeight: '600' },
   msg: { color: colors.accent, textAlign: 'center', fontWeight: '700' },
   confirmBox: { backgroundColor: colors.cardAlt, borderRadius: 16, padding: space.lg, gap: space.sm, alignItems: 'center', borderWidth: 2, borderColor: colors.win },

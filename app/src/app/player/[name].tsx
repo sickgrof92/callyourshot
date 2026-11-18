@@ -49,7 +49,7 @@ export default function Player() {
             <Stat label="Reloads" value={String(p.reloads)} color={colors.neon} />
             <Stat label="Contests won" value={String(p.contestsWon)} color={colors.gold} />
           </View>
-          <Text style={styles.fine}>Forfeits count as losses. Ties are pushes. Reloads are videos watched for points.</Text>
+          <Text style={styles.fine}>Forfeits count as losses. Ties are pushes. Reloads are refills: videos watched for more points, not counting each contest's starting points.</Text>
         </>
       )}
     </ScrollView>

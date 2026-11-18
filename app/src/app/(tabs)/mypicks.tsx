@@ -5,7 +5,7 @@ import { FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, View } fr
 import { Celebration, type CelebrationInfo } from '../../components/Celebration';
 import { ContestSwitcher } from '../../components/ContestSwitcher';
 import { GameButton } from '../../components/GameButton';
-import { api, ApiError, type Pick } from '../../lib/api';
+import { api, ApiError, type ParlayLeg, type Pick } from '../../lib/api';
 import { gameTime, lineLabel, marketName, signed } from '../../lib/format';
 import { useContests } from '../../lib/contests';
 import { useSession } from '../../lib/session';
@@ -30,6 +30,34 @@ function result(p: Pick): string {
   if (p.status === 'lost') return `-${p.points} pts`;
   if (p.status === 'push' || p.status === 'void') return `${p.points} pts back`;
   return `${p.points} pts in play`;
+}
+
+function title(p: Pick): string {
+  if (p.market === 'parlay') return p.selection === 'round_robin' ? `Round robin: ${p.legs?.length ?? 0}-pick parlay` : `${p.legs?.length ?? 0}-pick parlay`;
+  return lineLabel(p.market, p.selection as Exclude<Pick['selection'], 'parlay' | 'round_robin'>, p.point, p.home_team, p.away_team);
+}
+
+const LEG_MARK: Record<ParlayLeg['status'], { icon: string; color: string }> = {
+  pending: { icon: '•', color: colors.neon },
+  won: { icon: '✓', color: colors.win },
+  lost: { icon: '✗', color: colors.loss },
+  push: { icon: '=', color: colors.push },
+  void: { icon: '=', color: colors.push },
+};
+
+function Legs({ legs }: { legs: ParlayLeg[] }) {
+  return (
+    <View style={{ gap: 2, marginVertical: space.xs }}>
+      {legs.map((l) => (
+        <Text key={l.event_id} style={styles.meta}>
+          <Text style={{ color: LEG_MARK[l.status].color, fontWeight: '900' }}>{LEG_MARK[l.status].icon} </Text>
+          <Text style={{ color: colors.text, fontWeight: '800' }}>{lineLabel(l.market, l.selection, l.point, l.home_team, l.away_team)}</Text>
+          {` (${signed(l.price)}) · ${l.away_team} at ${l.home_team}`}
+          {l.home_score !== null ? ` · Final ${l.away_score}-${l.home_score}` : ''}
+        </Text>
+      ))}
+    </View>
+  );
 }
 
 // Wins the player has already celebrated, so each win gets its moment once.
@@ -118,19 +146,28 @@ export default function MyPicks() {
         return (
           <View style={[styles.card, { borderLeftColor: s.color }]}>
             <View style={styles.top}>
-              <Text style={styles.pick}>{lineLabel(p.market, p.selection, p.point, p.home_team, p.away_team)}</Text>
+              <Text style={styles.pick}>{title(p)}</Text>
               <Text style={[styles.status, { color: s.color, borderColor: s.color }]}>{s.label}</Text>
             </View>
-            <Text style={styles.meta}>
-              {marketName[p.market]} · {signed(p.price)} · {p.away_team} at {p.home_team}
-            </Text>
+            {p.market === 'parlay' ? (
+              <>
+                <Text style={styles.meta}>Parlay {signed(p.price)} · every pick has to win</Text>
+                <Legs legs={p.legs ?? []} />
+              </>
+            ) : (
+              <Text style={styles.meta}>
+                {marketName[p.market]} · {signed(p.price)} · {p.away_team} at {p.home_team}
+              </Text>
+            )}
             <View style={styles.top}>
               <Text style={styles.meta}>
-                {p.home_score !== null ? `Final ${p.away_score}-${p.home_score}` : gameTime(new Date(p.commence_time).toISOString())}
+                {p.home_score !== null
+                  ? `Final ${p.away_score}-${p.home_score}`
+                  : `${p.market === 'parlay' ? 'First game ' : ''}${gameTime(new Date(p.commence_time).toISOString())}`}
               </Text>
               <Text style={[styles.result, { color: s.color }]}>{result(p)}</Text>
             </View>
-            {p.status === 'pending' && !started(p) && (
+            {p.status === 'pending' && !started(p) && p.market !== 'parlay' && (
               <GameButton
                 title="Change this pick"
                 variant="ghost"
@@ -166,7 +203,7 @@ export default function MyPicks() {
               {forfeiting && (
                 <View style={styles.dialog}>
                   <Text style={styles.warnTitle}>FORFEIT THIS PICK?</Text>
-                  <Text style={styles.warnPick}>{lineLabel(forfeiting.market, forfeiting.selection, forfeiting.point, forfeiting.home_team, forfeiting.away_team)}</Text>
+                  <Text style={styles.warnPick}>{title(forfeiting)}</Text>
                   <Text style={styles.warnBody}>
                     This pick will count as a <Text style={{ fontWeight: '900', color: colors.loss }}>LOSS</Text>. You lose the{' '}
                     <Text style={{ fontWeight: '900', color: colors.text }}>{forfeiting.points} points</Text> on it, even if it would have

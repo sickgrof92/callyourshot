@@ -65,7 +65,8 @@ describe('tiebreakers', () => {
       ['eve', 5],
       ['fay', 5],
     ]);
-    expect(s[2]).toMatchObject({ refills: 3, wins: 3, losses: 1, winPct: 0.75 });
+    // 3 points videos: the starting points plus 2 refills.
+    expect(s[2]).toMatchObject({ refills: 2, wins: 3, losses: 1, winPct: 0.75 });
 
     // A tie at the very top: both win the full prize.
     db.prepare("UPDATE competition_entries SET balance = 100 WHERE user_id IN ('e', 'f')").run();
@@ -211,7 +212,7 @@ describe('public profiles', () => {
       db.prepare("INSERT INTO picks (id, user_id, competition_id, event_id, market, selection, price, stake, status, created_at) VALUES (?, ?, ?, ?, 'moneyline', 'home', -110, 10, ?, 0)").run(`pk${i}`, uid, cid, `ev${i}`, status);
     });
     const res = await app.inject({ method: 'GET', url: '/players/streaky' });
-    expect(res.json()).toMatchObject({ displayName: 'streaky', wins: 5, losses: 2, ties: 1, longestWinStreak: 3, currentWinStreak: 0, reloads: 2, contestsJoined: 1 });
+    expect(res.json()).toMatchObject({ displayName: 'streaky', wins: 5, losses: 2, ties: 1, longestWinStreak: 3, currentWinStreak: 0, reloads: 1, contestsJoined: 1 }); // 2 videos, the first is starting points
     expect(res.json().winPct).toBeCloseTo(5 / 7);
     expect(res.body).not.toMatch(/@|\+1555|NY|phone|email|region/);
     expect((await app.inject({ method: 'GET', url: '/players/nobody' })).statusCode).toBe(404);
