@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delete your Call Your Shot account</title>
+<style>
+  body { margin: 0; background: #0b0820; color: #f6f4ff; font: 16px/1.55 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { color: #ffe14d; font-size: 24px; }
+  h2 { color: #2ef2ff; font-size: 18px; margin-top: 28px; }
+  a { color: #2ef2ff; }
+  .draft { background: #3a1020; color: #ffb3c1; padding: 10px 12px; border-radius: 10px; }
+  form { display: grid; gap: 12px; margin-top: 12px; }
+  label { display: grid; gap: 4px; font-weight: 600; }
+  input, textarea { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1.5px solid #3a3360; background: #17122f; color: #f6f4ff; }
+  button { font: inherit; font-weight: 800; padding: 12px; border: 0; border-radius: 12px; background: #ff3d9a; color: #fff; cursor: pointer; }
+  button:disabled { opacity: .6; }
+  .msg { padding: 10px 12px; border-radius: 10px; background: #12352a; color: #b8ffd9; }
+  .msg.err { background: #3a1020; color: #ffb3c1; }
+</style>
+</head>
+<body>
+<main>
+<h1>Delete your Call Your Shot account</h1>
+
+<h2>In the app (fastest)</h2>
+<p>Open the menu and tap <strong>Delete my account</strong>. Your account is deleted right away.</p>
+
+<h2>Without the app</h2>
+<p>Fill in this form with the details on your account. We&rsquo;ll match them to your account and delete it within 30 days.</p>
+<form id="f">
+  <label>Display name <input name="displayName" required maxlength="40" autocomplete="nickname"></label>
+  <label>Email on your account <input name="email" type="email" required maxlength="200" autocomplete="email"></label>
+  <label>Phone number on your account <input name="phone" type="tel" maxlength="32" autocomplete="tel"></label>
+  <label>Anything else (optional) <textarea name="note" rows="3" maxlength="1000"></textarea></label>
+  <button id="go" type="submit">Request deletion</button>
+  <div id="out"></div>
+</form>
+
+<h2>What gets deleted</h2>
+<p>Your account details (display name, email, phone number, location and date of birth), your sign-in link, push token, picks, points, contest entries, messages and any unpaid prize claim. If you were paid a prize, we keep that prize record and the claim details we are required to keep for tax purposes, with the rest of your account anonymized. See the <a href="/privacy">Privacy Policy</a>.</p>
+</main>
+<script>
+document.getElementById('f').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const out = document.getElementById('out'), go = document.getElementById('go');
+  const data = Object.fromEntries(new FormData(e.target));
+  go.disabled = true;
+  try {
+    const r = await fetch('/account-deletion-requests', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
+    if (r.ok) { out.className = 'msg'; out.textContent = "Got it. We'll delete your account within 30 days."; e.target.reset(); }
+    else { out.className = 'msg err'; out.textContent = r.status === 429 ? 'Too many requests. Try again in an hour.' : 'Check your details and try again.'; }
+  } catch { out.className = 'msg err'; out.textContent = "Couldn't send. Check your connection and try again."; }
+  go.disabled = false;
+});
+</script>
+</body>
+</html>

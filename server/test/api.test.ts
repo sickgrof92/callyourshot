@@ -215,6 +215,20 @@ describe('end-to-end', () => {
     expect(mine.competition.mine).toMatchObject({ balance: 0, hasStartingPoints: true });
   });
 
+  it('takes account deletion requests from the web and lists them for the admin', async () => {
+    const { app } = setup(et(2026, 11, 20, 12));
+    expect((await app.inject({ method: 'GET', url: '/delete-account' })).body).toContain('Request deletion');
+    const ask = (payload: object) => app.inject({ method: 'POST', url: '/account-deletion-requests', payload });
+    expect((await ask({ displayName: 'gone', email: 'nope' })).statusCode).toBe(400);
+    expect((await ask({ displayName: 'gone', email: 'gone@example.com', phone: '555-0100' })).statusCode).toBe(200);
+    const admin = { authorization: 'Bearer admin-secret' };
+    const msgs = (await app.inject({ method: 'GET', url: '/admin/messages', headers: admin })).json().messages;
+    expect(msgs[0]).toMatchObject({ topic: 'Account deletion request (web)', email: 'gone@example.com', handled_at: null });
+    expect((await app.inject({ method: 'PUT', url: `/admin/messages/${msgs[0].id}`, headers: admin, payload: { handled: true } })).statusCode).toBe(200);
+    for (let i = 0; i < 4; i++) await ask({ displayName: 'spam', email: 'spam@example.com' });
+    expect((await ask({ displayName: 'spam', email: 'spam@example.com' })).statusCode).toBe(429);
+  });
+
   it('refunds picks as soon as the schedule shows a game postponed or cancelled', async () => {
     const { app, db, cid, games, loadLines } = setup(et(2026, 11, 21, 12));
     games.push({ id: 'g2', sport: 'basketball_nba', start: et(2026, 11, 21, 20), home: 'Nets', away: 'Bulls', homeScore: 0, awayScore: 0 });
