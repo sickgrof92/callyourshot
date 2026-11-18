@@ -812,6 +812,22 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
     return res.changes || res2.changes ? { ok: true } : reply.code(404).send({ error: 'not_found' });
   });
 
+  // Act on a web deletion request: delete the account whose email matches (or, failing that, phone).
+  app.post('/admin/deletion-requests/:id/delete', async (req, reply) => {
+    requireAdmin(req);
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const r = db.prepare('SELECT email, phone FROM deletion_requests WHERE id = ?').get(id) as { email: string; phone: string } | undefined;
+    if (!r) return reply.code(404).send({ error: 'not_found' });
+    const ek = emailKey(r.email);
+    const phone = r.phone ? normalizePhone(r.phone) : null;
+    const u = ((ek && db.prepare('SELECT id, display_name FROM users WHERE email_key = ?').get(ek)) ||
+      (phone && db.prepare('SELECT id, display_name FROM users WHERE phone = ?').get(phone))) as { id: string; display_name: string } | undefined;
+    if (!u) return reply.code(404).send({ error: 'no_matching_account' });
+    const res = deleteAccount(db, u.id);
+    db.prepare('UPDATE deletion_requests SET handled_at = ? WHERE id = ?').run(clock(), id);
+    return { deleted: u.display_name, kept: res.kept };
+  });
+
   // Winners' claim forms (decrypted for the admin only) and their status.
   app.get('/admin/claims', async (req) => {
     requireAdmin(req);

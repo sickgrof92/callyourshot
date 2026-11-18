@@ -216,16 +216,25 @@ describe('end-to-end', () => {
   });
 
   it('takes account deletion requests from the web and lists them for the admin', async () => {
-    const { app } = setup(et(2026, 11, 20, 12));
+    const { app, db } = setup(et(2026, 11, 20, 12));
     expect((await app.inject({ method: 'GET', url: '/delete-account' })).body).toContain('Request deletion');
+    await signUp(app, 'gone');
+    const { email } = db.prepare("SELECT email FROM users WHERE display_name = 'gone'").get() as { email: string };
     const ask = (payload: object) => app.inject({ method: 'POST', url: '/account-deletion-requests', payload });
     expect((await ask({ displayName: 'gone', email: 'nope' })).statusCode).toBe(400);
-    expect((await ask({ displayName: 'gone', email: 'gone@example.com', phone: '555-0100' })).statusCode).toBe(200);
+    expect((await ask({ displayName: 'gone', email: 'nobody@example.com' })).statusCode).toBe(200);
+    expect((await ask({ displayName: 'gone', email, phone: '555-0100' })).statusCode).toBe(200);
     const admin = { authorization: 'Bearer admin-secret' };
     const msgs = (await app.inject({ method: 'GET', url: '/admin/messages', headers: admin })).json().messages;
-    expect(msgs[0]).toMatchObject({ topic: 'Account deletion request (web)', email: 'gone@example.com', handled_at: null });
-    expect((await app.inject({ method: 'PUT', url: `/admin/messages/${msgs[0].id}`, headers: admin, payload: { handled: true } })).statusCode).toBe(200);
-    for (let i = 0; i < 4; i++) await ask({ displayName: 'spam', email: 'spam@example.com' });
+    const mine = msgs.find((m: { email: string }) => m.email === email);
+    const other = msgs.find((m: { email: string }) => m.email === 'nobody@example.com');
+    expect(mine).toMatchObject({ topic: 'Account deletion request (web)', handled_at: null });
+    const del = (id: string) => app.inject({ method: 'POST', url: `/admin/deletion-requests/${id}/delete`, headers: admin });
+    expect((await del(other.id)).json().error).toBe('no_matching_account');
+    expect((await del(mine.id)).json()).toMatchObject({ deleted: 'gone', kept: 'nothing' });
+    expect(db.prepare("SELECT 1 FROM users WHERE display_name = 'gone'").get()).toBeUndefined();
+    expect((await app.inject({ method: 'PUT', url: `/admin/messages/${other.id}`, headers: admin, payload: { handled: true } })).statusCode).toBe(200);
+    for (let i = 0; i < 3; i++) await ask({ displayName: 'spam', email: 'spam@example.com' });
     expect((await ask({ displayName: 'spam', email: 'spam@example.com' })).statusCode).toBe(429);
   });
 
