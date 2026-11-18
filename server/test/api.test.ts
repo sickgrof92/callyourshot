@@ -282,6 +282,27 @@ describe('end-to-end', () => {
     expect((await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 5, adSessionId: ad })).statusCode).toBe(200);
   });
 
+  it('lets the admin load a sport\'s lines right away', async () => {
+    const db = testDb();
+    const cfg = testConfig();
+    const now = et(2026, 11, 21, 9);
+    const api = new FakeOddsApi(
+      [{ id: 'n1', sport: 'basketball_nba', start: et(2026, 11, 21, 19), home: 'Knicks', away: 'Celtics', homeScore: 0, awayScore: 0 }],
+      () => now,
+    );
+    const app = buildApp({ db, cfg, clock: () => now, oddsApi: api });
+    const ADMIN = { authorization: `Bearer ${cfg.adminToken}` };
+    expect((await app.inject({ method: 'POST', url: '/admin/lines/refresh', payload: { sport: 'basketball_nba' } })).statusCode).toBe(403);
+    const r = await app.inject({ method: 'POST', url: '/admin/lines/refresh', headers: ADMIN, payload: { sport: 'basketball_nba' } });
+    expect(r.json()).toMatchObject({ ok: true, games: 1, withLines: 1 });
+    const lines = (await app.inject({ method: 'GET', url: '/lines?sport=basketball_nba' })).json().events;
+    expect(Object.keys(lines[0].lines)).toEqual(expect.arrayContaining(['moneyline', 'spread', 'total']));
+    expect((await app.inject({ method: 'POST', url: '/admin/lines/refresh', headers: ADMIN, payload: { sport: 'curling' } })).json().error).toBe('Unknown sport.');
+    // Without an Odds API key, the button explains why it can't.
+    const noKey = buildApp({ db, cfg, clock: () => now });
+    expect((await noKey.inject({ method: 'POST', url: '/admin/lines/refresh', headers: ADMIN, payload: { sport: 'basketball_nba' } })).statusCode).toBe(503);
+  });
+
   it('forfeits a pick as a loss after an ad, only once the game has started, so the player can refill again', async () => {
     const { app, db, cid, loadLines, setClock } = setup(et(2026, 11, 21, 12));
     await loadLines();

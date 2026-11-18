@@ -347,3 +347,30 @@ export function startScheduler(db: DB, cfg: Config, api: OddsApi, log?: Logger):
   const handle = setInterval(run, cfg.schedulerTickSeconds * 1000);
   return () => clearInterval(handle);
 }
+
+export type RefreshResult = { ok: true; games: number; withLines: number; remaining: number | null } | { ok: false; error: string };
+
+/**
+ * Admin button: load one sport's lines right now instead of waiting for the
+ * scheduler (on the free tier it only refreshes about 2 hours before a sport's
+ * first game). Costs one odds call (3 credits with the default markets). Refused
+ * once credits are down to the reserve, so grading is never starved.
+ */
+export async function refreshLinesNow(db: DB, cfg: Config, api: OddsApi, sport: string, now: number): Promise<RefreshResult> {
+  if (!cfg.sports.includes(sport)) return { ok: false, error: 'Unknown sport.' };
+  const budget = getBudgetStatus(db, cfg, now);
+  const cost = oddsCallCost(cfg.oddsRegions);
+  if (currentRemaining(db, cfg, now) - cost <= budget.reserve) return { ok: false, error: 'Odds API credits are down to the reserve kept for grading picks.' };
+  try {
+    const { data, usage } = await api.getOdds(sport);
+    recordApiCall(db, { at: now, endpoint: 'odds', sport, usage, expectedCost: cost, ok: true });
+    ingestOdds(db, data, cfg.preferredBooks, now);
+    setState(db, sport, 'last_odds_at', now);
+    const withLines = data.filter((e) => e.bookmakers.length > 0).length;
+    return { ok: true, games: data.length, withLines, remaining: usage.remaining };
+  } catch (err) {
+    const usage = err instanceof OddsApiError ? err.usage : { remaining: null, used: null, last: null };
+    recordApiCall(db, { at: now, endpoint: 'odds', sport, usage, expectedCost: cost, ok: false });
+    return { ok: false, error: `The Odds API call failed: ${(err as Error).message}` };
+  }
+}
