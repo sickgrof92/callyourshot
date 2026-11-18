@@ -199,6 +199,17 @@ CREATE TABLE IF NOT EXISTS contact_messages (
 );
 CREATE INDEX IF NOT EXISTS contact_messages_time ON contact_messages(created_at);
 
+-- Account deletion requests from the web page (for people who no longer have the app).
+CREATE TABLE IF NOT EXISTS deletion_requests (
+  id           TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  email        TEXT NOT NULL,
+  phone        TEXT NOT NULL,
+  note         TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,
+  handled_at   INTEGER
+);
+
 -- Joining is free. One row per player per contest, holding that contest's
 -- points balance. Everyone starts at 0.
 CREATE TABLE IF NOT EXISTS competition_entries (

@@ -647,10 +647,38 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
   // ---- Legal pages ----------------------------------------------------------
   // The app links here. Replace the files in src/legal/ with the final text.
 
-  for (const [route, file] of [['/privacy', 'privacy.html'], ['/rules', 'rules.html']] as const) {
+  for (const [route, file] of [['/privacy', 'privacy.html'], ['/rules', 'rules.html'], ['/delete-account', 'delete-account.html']] as const) {
     const html = readFileSync(new URL(`./legal/${file}`, import.meta.url), 'utf8');
     app.get(route, async (_req, reply) => reply.type('text/html; charset=utf-8').send(html));
   }
+
+  // Account deletion requests from the web (Google Play requires a web way to ask).
+  // They show up in the admin page's Messages. 5 per IP per hour.
+  const deletionTries = new Map<string, { n: number; since: number }>();
+  app.post('/account-deletion-requests', async (req, reply) => {
+    const now = clock();
+    const t = deletionTries.get(req.ip);
+    const cur = t && now - t.since < HOUR ? t : { n: 0, since: now };
+    if (cur.n >= 5) return reply.code(429).send({ error: 'too_many' });
+    deletionTries.set(req.ip, { n: cur.n + 1, since: cur.since });
+    const b = z
+      .object({
+        displayName: z.string().trim().min(1).max(40),
+        email: z.string().trim().email().max(200),
+        phone: z.string().trim().max(32).default(''),
+        note: z.string().trim().max(1000).default(''),
+      })
+      .parse(req.body);
+    db.prepare('INSERT INTO deletion_requests (id, display_name, email, phone, note, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+      randomUUID(),
+      b.displayName,
+      b.email,
+      b.phone,
+      b.note,
+      now,
+    );
+    return { ok: true };
+  });
 
   // ---- Admin page -----------------------------------------------------------
 
@@ -761,8 +789,14 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
     requireAdmin(req);
     const rows = db
       .prepare(
-        `SELECT m.id, m.topic, m.body, m.created_at, m.handled_at, u.display_name, u.email, u.phone
-         FROM contact_messages m JOIN users u ON u.id = m.user_id ORDER BY m.handled_at IS NOT NULL, m.created_at DESC LIMIT 100`,
+        `SELECT * FROM (
+           SELECT m.id, m.topic, m.body, m.created_at, m.handled_at, u.display_name, u.email, u.phone
+           FROM contact_messages m JOIN users u ON u.id = m.user_id
+           UNION ALL
+           SELECT d.id, 'Account deletion request (web)', 'Delete my account. Match the name, email and phone to the account, then delete it.' || CASE WHEN d.note <> '' THEN char(10) || char(10) || d.note ELSE '' END,
+                  d.created_at, d.handled_at, d.display_name, d.email, d.phone
+           FROM deletion_requests d
+         ) ORDER BY handled_at IS NOT NULL, created_at DESC LIMIT 100`,
       )
       .all() as Record<string, unknown>[];
     return { messages: rows };
@@ -772,8 +806,10 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
     requireAdmin(req);
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const { handled } = z.object({ handled: z.boolean() }).parse(req.body);
-    const res = db.prepare('UPDATE contact_messages SET handled_at = ? WHERE id = ?').run(handled ? clock() : null, id);
-    return res.changes ? { ok: true } : reply.code(404).send({ error: 'not_found' });
+    const at = handled ? clock() : null;
+    const res = db.prepare('UPDATE contact_messages SET handled_at = ? WHERE id = ?').run(at, id);
+    const res2 = db.prepare('UPDATE deletion_requests SET handled_at = ? WHERE id = ?').run(at, id);
+    return res.changes || res2.changes ? { ok: true } : reply.code(404).send({ error: 'not_found' });
   });
 
   // Winners' claim forms (decrypted for the admin only) and their status.
