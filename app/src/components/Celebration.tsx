@@ -16,6 +16,11 @@ export interface CelebrationInfo {
 /** Full-screen burst of stars and confetti with a big headline. Tap or wait to dismiss. */
 export function Celebration({ info, onDone }: { info: CelebrationInfo | null; onDone: () => void }) {
   const t = useRef(new Animated.Value(0)).current;
+  // Screens pass a new onDone on every render (and they re-render while loading
+  // right after a celebration starts). Keep the latest one in a ref so a
+  // re-render doesn't restart the animation and the timer.
+  const done = useRef(onDone);
+  done.current = onDone;
   const pop = useRef(new Animated.Value(0)).current;
   const bits = useMemo(
     () =>
@@ -38,14 +43,14 @@ export function Celebration({ info, onDone }: { info: CelebrationInfo | null; on
       Animated.timing(t, { toValue: 1, duration: 1300, easing: Easing.out(Easing.quad), useNativeDriver: true }),
       Animated.spring(pop, { toValue: 1, useNativeDriver: true, bounciness: 16, speed: 10 }),
     ]).start();
-    const id = setTimeout(onDone, 2200);
+    const id = setTimeout(() => done.current(), 2200);
     return () => clearTimeout(id);
-  }, [info, t, pop, onDone]);
+  }, [info, t, pop]);
 
   if (!info) return null;
   const color = info.color ?? colors.accent;
   return (
-    <Pressable style={styles.wrap} onPress={onDone}>
+    <Pressable style={styles.wrap} onPress={() => done.current()}>
       <View style={styles.center} pointerEvents="none">
         {bits.map((b, i) => (
           <Animated.View
