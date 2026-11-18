@@ -107,8 +107,9 @@ export function PickSheet({
         else if (err.code === 'already_picked') setMessage(`You already have a ${marketName[market].toLowerCase()} pick on this game.`);
         else if (err.code === 'not_enough_points') setMessage("You don't have enough points for this pick.");
         else if (err.code === 'after_contest_end') setMessage("This game won't be over before your contest ends, so it can't count in it.");
+        else if (err.code === 'before_contest_start') setMessage("This game starts before your contest opens, so it can't count in it.");
         else if (err.code === 'wrong_sport') setMessage("This contest is for a different sport, so this game doesn't count in it.");
-        else if (err.code === 'contest_not_live' || err.code === 'not_joined') setMessage("This contest isn't running right now.");
+        else if (err.code === 'contest_not_live' || err.code === 'not_joined') setMessage('This contest has ended.');
         else if (err.code === 'pick_ad_required') {
           setAdSessionId(null);
           setMessage(`That ad has expired. Watch another to confirm your ${noun}.`);

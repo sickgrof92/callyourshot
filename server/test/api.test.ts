@@ -181,7 +181,7 @@ describe('end-to-end', () => {
     expect(picks[0]).toMatchObject({ selection: 'away', competition_name: 'Monthly' });
   });
 
-  it('only allows picks while the contest is live, on games expected to finish before it ends', async () => {
+  it('allows points and picks from joining until the contest ends, only on games inside its window', async () => {
     const { app, db, loadLines } = setup(et(2026, 11, 20, 12));
     await loadLines();
     const mk = (startsAt: number, endsAt: number) => {
@@ -194,18 +194,25 @@ describe('end-to-end', () => {
     // Starts before the 7 PM tip, but an NBA game (plus a buffer) isn't expected to be over by 9:30 PM.
     const endsMidGame = mk(et(2026, 11, 20, 6), et(2026, 11, 21, 21) + 30 * MIN);
     const endsAt5am = mk(et(2026, 11, 20, 6), et(2026, 11, 22, 5));
+    const startsAfterTip = mk(et(2026, 11, 21, 20), et(2026, 11, 22, 5)); // opens after the 7 PM game starts
     const a = await signUp(app, 'alice', tomorrow);
-    for (const id of [endsEarly, endsMidGame, endsAt5am]) await app.inject({ method: 'POST', url: `/competitions/${id}/join`, headers: auth(a) });
+    for (const id of [endsEarly, endsMidGame, endsAt5am, startsAfterTip]) await app.inject({ method: 'POST', url: `/competitions/${id}/join`, headers: auth(a) });
     await watchAd(app, a, 'points', endsMidGame);
     await watchAd(app, a, 'points', endsAt5am);
     const ad1 = (await watchAd(app, a, 'pick')).sessionId!;
     expect((await pick(app, a, { competitionId: endsMidGame, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad1 })).json().error).toBe('after_contest_end');
     expect((await pick(app, a, { competitionId: endsAt5am, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad1 })).statusCode).toBe(200);
-    expect((await watchAd(app, a, 'points', tomorrow)).start.json().error).toBe('contest_not_live');
+    // Tomorrow's contest hasn't opened yet: starting points and picks work anyway.
+    expect((await watchAd(app, a, 'points', tomorrow)).start.statusCode).toBe(200);
     await watchAd(app, a, 'points', endsEarly);
+    await watchAd(app, a, 'points', startsAfterTip);
     const ad = (await watchAd(app, a, 'pick')).sessionId!;
-    expect((await pick(app, a, { competitionId: tomorrow, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).json().error).toBe('contest_not_live');
     expect((await pick(app, a, { competitionId: endsEarly, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).json().error).toBe('after_contest_end');
+    expect((await pick(app, a, { competitionId: startsAfterTip, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).json().error).toBe('before_contest_start');
+    expect((await pick(app, a, { competitionId: tomorrow, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).statusCode).toBe(200);
+    const mine = (await app.inject({ method: 'GET', url: `/competitions/${tomorrow}`, headers: auth(a) })).json();
+    expect(mine.competition.status).toBe('upcoming');
+    expect(mine.competition.mine).toMatchObject({ balance: 0, hasStartingPoints: true });
   });
 
   it('refunds picks as soon as the schedule shows a game postponed or cancelled', async () => {

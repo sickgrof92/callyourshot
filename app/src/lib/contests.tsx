@@ -50,7 +50,10 @@ export function ContestsProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const value = useMemo<Contests>(() => {
-    const playable = all.filter((c) => c.joined && c.status === 'live');
+    // Joined contests can be played as soon as you join, before they open: live ones first.
+    const playable = all
+      .filter((c) => c.joined && c.status !== 'ended')
+      .sort((a, b) => Number(b.status === 'live') - Number(a.status === 'live'));
     const active = playable.find((c) => c.id === activeId) ?? playable[0] ?? null;
     return {
       all,

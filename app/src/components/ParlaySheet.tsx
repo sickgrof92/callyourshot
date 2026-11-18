@@ -159,13 +159,14 @@ export function ParlaySheet({
         if (err.code === 'locked' && !ev) setMessage("Your parlay's first game has started, so it can't be changed now.");
         else if (err.code === 'not_pending') setMessage('That parlay has already been graded or forfeited.');
         else if (err.code === 'locked') setMessage(`${name} has started, so it can't be in a parlay. Remove it and try again.`);
+        else if (err.code === 'before_contest_start') setMessage(`${name} starts before your contest opens. Remove it and try again.`);
         else if (err.code === 'after_contest_end') setMessage(`${name} won't be over before your contest ends. Remove it and try again.`);
         else if (err.code === 'same_game') setMessage('A parlay can only have one pick per game.');
         else if (err.code === 'not_enough_points') setMessage("You don't have enough points for this.");
         else if (err.code === 'pick_ad_required') {
           setAdSessionId(null);
           setMessage('That ad has expired. Watch another to confirm.');
-        } else if (err.code === 'contest_not_live' || err.code === 'not_joined') setMessage("This contest isn't running right now.");
+        } else if (err.code === 'contest_not_live' || err.code === 'not_joined') setMessage('This contest has ended.');
         else setMessage('Something went wrong. Try again.');
       } else setMessage('Could not reach the server.');
     } finally {

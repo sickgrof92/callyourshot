@@ -17,7 +17,7 @@ const STEPS: { icon: IconName; color: string; title: string; body: string }[] = 
 
 const FAQ: [string, string][] = [
   ['Does it cost anything?', 'No. Contests are free to enter, and there is nothing to buy. Points have no cash value and can’t be bought, sold or transferred.'],
-  ['Can I join a contest before it starts?', 'Yes. Join any upcoming contest to save your spot. Your 10 starting points and picks unlock when the contest opens, so come back then to collect your points.'],
+  ['Can I join a contest before it starts?', 'Yes, and you can start playing right away. As soon as you join, you can collect your 10 starting points and make picks, even before the contest opens. Only games that start after the contest opens and finish before it ends can be picked in it.'],
   ['What happens when I run out of points?', 'When you have exactly 0 points and no picks waiting to be graded in a contest, you can watch a video for 10 more. You get 5 refills per day in each contest you join. Your 10 starting points when you join a contest are not a refill.'],
   ['Why can’t I refill right now?', 'Refills are only for when you’re at exactly 0 points. If you have points left, use them: picks can be as small as 1 point. If you have picks in play, wait for them to be graded, or forfeit one after its game starts to get back to 0 sooner.'],
   ['Can I change a pick?', 'Yes. Any time before the game starts, open My Picks, tap Change this pick, choose a new line on that game, and watch a short ad. Changing a pick isn’t a forfeit: the points from your old pick go toward the new one.'],

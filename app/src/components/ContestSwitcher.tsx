@@ -35,7 +35,7 @@ export function ContestSwitcher() {
             <Text style={[styles.chipName, { color: on ? color : colors.muted }]} numberOfLines={1}>
               {c.name}
             </Text>
-            <Text style={[styles.chipPts, { color: on ? colors.accent : colors.muted }]}>{c.mine?.balance ?? 0} pts</Text>
+            <Text style={[styles.chipPts, { color: on ? colors.accent : colors.muted }]}>{c.mine?.balance ?? 0} pts{c.status === 'upcoming' ? ' · opens soon' : ''}</Text>
           </Pressable>
         );
       })}

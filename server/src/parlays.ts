@@ -64,6 +64,7 @@ export type ParlayError =
   | 'not_found'
   | 'locked'
   | 'after_contest_end'
+  | 'before_contest_start'
   | 'wrong_sport'
   | 'no_line'
   | 'not_enough_points'
@@ -116,7 +117,7 @@ export function placeParlay(db: DB, cfg: Config, userId: string, input: ParlayIn
     if (!c || !db.prepare('SELECT 1 FROM competition_entries WHERE competition_id = ? AND user_id = ?').get(input.competitionId, userId)) {
       return { ok: false, error: 'not_joined' };
     }
-    if (now < c.starts_at || now >= c.ends_at) return { ok: false, error: 'contest_not_live' };
+    if (now >= c.ends_at) return { ok: false, error: 'contest_not_live' };
 
     // Check every game and line first; nothing is saved unless all of them pass.
     const priced: (LegInput & { point: number | null; price: number })[] = [];
@@ -126,6 +127,7 @@ export function placeParlay(db: DB, cfg: Config, userId: string, input: ParlayIn
         | undefined;
       if (!ev) return { ok: false, error: 'not_found', eventId: leg.eventId };
       if (now >= ev.commence_time) return { ok: false, error: 'locked', eventId: leg.eventId };
+      if (ev.commence_time < c.starts_at) return { ok: false, error: 'before_contest_start', eventId: leg.eventId };
       if (expectedEnd(ev.sport, ev.commence_time) > c.ends_at) return { ok: false, error: 'after_contest_end', eventId: leg.eventId };
       if (c.sport && ev.sport !== c.sport) return { ok: false, error: 'wrong_sport', eventId: leg.eventId };
       const line = db
