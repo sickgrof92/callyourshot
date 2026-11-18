@@ -55,7 +55,11 @@ export default function ContestScreen() {
       await api.joinContest(token, id);
       await contests.refresh();
       if (data?.competition.status === 'live') contests.setActive(id);
-      setParty({ title: "YOU'RE IN!", subtitle: data?.competition.name, color: colors.neon });
+      setParty({
+        title: "YOU'RE IN!",
+        subtitle: data?.competition.status === 'upcoming' ? `${data.competition.name}\nYour points unlock when it opens.` : data?.competition.name,
+        color: colors.neon,
+      });
     } catch (err) {
       warn();
       setMessage(err instanceof ApiError && err.code === 'full' ? 'This contest just filled up.' : 'Could not join. Try again.');
@@ -151,6 +155,16 @@ export default function ContestScreen() {
               ) : c.status !== 'ended' && !c.joined ? (
                 <GameButton title={full ? 'Full' : 'Join free'} variant="go" size="lg" icon="flash" disabled={full} busy={busy} heavy onPress={join} />
               ) : null}
+              {c.joined && c.status === 'upcoming' && (
+                <View style={styles.soon}>
+                  <Text style={styles.soonTitle}>YOU'RE IN</Text>
+                  <Text style={styles.soonBody}>
+                    Your {me?.adRewardPoints ?? 10} starting points unlock when this contest opens,{' '}
+                    {new Date(c.startsAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}. Come back then to
+                    collect them and make your picks.
+                  </Text>
+                </View>
+              )}
               {canCollect && popupClosed && (
                 <GameButton title={`Watch video for ${me?.adRewardPoints ?? 10} points`} variant="primary" icon="play-circle" busy={watching} onPress={collect} />
               )}
@@ -216,6 +230,9 @@ const styles = StyleSheet.create({
   entries: { color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 6 },
   winner: { color: colors.gold, fontWeight: '900', fontSize: 16, marginTop: 8 },
   meCard: { flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.cardAlt, borderRadius: 16, padding: space.lg, borderWidth: 2, borderColor: colors.accent, paddingTop: space.lg + 6 },
+  soon: { backgroundColor: 'rgba(46,242,255,0.10)', borderRadius: 16, padding: space.lg, gap: space.xs, borderWidth: 1.5, borderColor: colors.neon },
+  soonTitle: { color: colors.neon, fontWeight: '900', letterSpacing: 1.5, fontSize: 12 },
+  soonBody: { color: colors.text, fontSize: 15, lineHeight: 21 },
   meLabel: { color: colors.muted, fontWeight: '900', letterSpacing: 1.5, fontSize: 12 },
   meScore: { color: colors.accent, fontWeight: '900', fontSize: 24 },
   msg: { color: colors.loss, textAlign: 'center', fontWeight: '700' },
