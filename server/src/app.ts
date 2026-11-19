@@ -775,8 +775,54 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const c = getCompetition(db, id);
     if (!c) return reply.code(404).send({ error: 'not_found' });
-    // Full tiebreak detail for the admin page.
-    return { standings: contestStandings(db, c, 50).map(({ userId: _u, ...r }) => r) };
+    // Full tiebreak detail for the admin page, with each player's id so their details can be opened.
+    return { standings: contestStandings(db, c, 50) };
+  });
+
+  // One player in one contest, for checking for fraud: their account details,
+  // career stats, any duplicate-account flags, and every pick they made here.
+  app.get('/admin/competitions/:id/players/:userId', async (req, reply) => {
+    requireAdmin(req);
+    const { id, userId } = z.object({ id: z.string(), userId: z.string() }).parse(req.params);
+    const c = getCompetition(db, id);
+    const u = db
+      .prepare(
+        `SELECT id, display_name, created_at, auth_provider, email, phone, phone_verified_at, country, region, birth_date, terms_accepted_at
+         FROM users WHERE id = ?`,
+      )
+      .get(userId) as
+      | { id: string; display_name: string; created_at: number; auth_provider: string | null; email: string | null; phone: string | null; phone_verified_at: number | null; country: string | null; region: string | null; birth_date: string | null; terms_accepted_at: number | null }
+      | undefined;
+    if (!c || !u) return reply.code(404).send({ error: 'not_found' });
+    const entry = db.prepare('SELECT balance, joined_at FROM competition_entries WHERE competition_id = ? AND user_id = ?').get(id, userId) as
+      | { balance: number; joined_at: number }
+      | undefined;
+    const pointsVideos = db
+      .prepare("SELECT rewarded_at FROM ad_sessions WHERE competition_id = ? AND user_id = ? AND purpose = 'points' AND rewarded_at IS NOT NULL ORDER BY rewarded_at")
+      .all(id, userId) as { rewarded_at: number }[];
+    const flags = duplicateGroups(db, cfg)
+      .filter((g) => g.players.some((p) => p.id === userId))
+      .map((g) => ({ reason: g.reason, others: g.players.filter((p) => p.id !== userId).map((p) => p.displayName) }));
+    const iso = (t: number | null) => (t === null ? null : new Date(t).toISOString());
+    return {
+      contestId: id,
+      player: {
+        id: u.id,
+        displayName: u.display_name,
+        joined: iso(u.created_at),
+        signIn: u.auth_provider,
+        email: u.email,
+        phone: u.phone,
+        phoneVerified: u.phone_verified_at !== null,
+        region: u.region && u.country ? `${u.region}, ${u.country}` : u.region,
+        birthDate: u.birth_date,
+        termsAccepted: iso(u.terms_accepted_at),
+      },
+      stats: playerStats(db, u.display_name),
+      flags,
+      entry: entry ? { balance: entry.balance, joined: iso(entry.joined_at), pointsVideos: pointsVideos.map((v) => iso(v.rewarded_at)) } : null,
+      picks: listPicks(db, userId, id, 500),
+    };
   });
 
   // Accounts that are probably the same person, for the admin to review.

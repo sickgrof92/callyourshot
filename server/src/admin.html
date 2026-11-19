@@ -27,6 +27,7 @@
   button.ghost { background: var(--card2); color: var(--text); box-shadow: 0 4px 0 #111133; }
   button.danger { background: var(--red); color: #fff; box-shadow: 0 4px 0 var(--red-dark); }
   button.small { padding: 8px 12px; font-size: 14px; }
+  button.link { background: none; box-shadow: none; padding: 0; color: var(--cyan); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
   .kinds button { flex: 1; }
   .kinds button.on { background: var(--cyan); color: #00222a; box-shadow: 0 4px 0 #0a8fa0; }
   .badge { display: inline-block; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--card2); color: var(--cyan); text-transform: uppercase; }
@@ -173,6 +174,58 @@
   const fromLocalInput = (v) => new Date(v).toISOString();
   const when = (iso) => new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   const show = (el, text, ok) => { el.innerHTML = text ? `<div class="msg ${ok ? 'ok' : 'err'}">${esc(text)}</div>` : ''; };
+
+  // ---- One player's details and picks in a contest (from the standings) ----
+  const signed = (n) => (n > 0 ? `+${n}` : `${n}`);
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const pickLine = (p) => {
+    const team = p.selection === 'home' ? p.home_team : p.selection === 'away' ? p.away_team : '';
+    if (p.market === 'moneyline') return `${team} to win`;
+    if (p.market === 'spread') return `${team} ${signed(p.point)}`;
+    return `${p.selection === 'over' ? 'Over' : 'Under'} ${p.point}`;
+  };
+  const game = (p) => `${esc(p.away_team)} @ ${esc(p.home_team)}${p.home_score !== null && p.home_score !== undefined ? ` · Final ${p.away_score}-${p.home_score}` : ''}`;
+  const result = (p) => {
+    if (p.forfeited_at) return '<span style="color:var(--red)">Forfeited</span>';
+    if (p.status === 'won') return `<span style="color:var(--green)">Won · paid ${p.payout}</span>`;
+    if (p.status === 'lost') return '<span style="color:var(--red)">Lost</span>';
+    if (p.status === 'push' || p.status === 'void') return `${p.status === 'push' ? 'Push' : 'Refunded'} · ${p.points} back`;
+    return 'Pending';
+  };
+  function playerPanel(r) {
+    const u = r.player, s = r.stats, e = r.entry;
+    const row = (k, v) => `<tr><td class="muted">${k}</td><td>${v ?? '-'}</td></tr>`;
+    const flags = r.flags.length
+      ? `<div class="msg err" style="margin-top:8px">${r.flags.map((f) => `Possible duplicate: ${esc(f.reason)} (${f.others.map(esc).join(', ')})`).join('<br>')}</div>`
+      : '<div class="muted" style="margin-top:8px">No duplicate-account flags.</div>';
+    const picks = r.picks.length
+      ? `<table><tr><th>Made</th><th>Pick</th><th>Pts</th><th>Line</th><th>Result</th></tr>${r.picks
+          .map((p) => {
+            const what = p.market === 'parlay'
+              ? `<b>${p.legs.length}-pick parlay${p.group_id ? ' (round robin)' : ''}</b>${p.legs.map((l) => `<div class="muted">${esc(pickLine(l))} · ${game(l)} · ${signed(l.price)} · ${l.status}</div>`).join('')}`
+              : `<b>${esc(pickLine(p))}</b><div class="muted">${game(p)}</div>`;
+            return `<tr><td>${when(new Date(p.created_at).toISOString())}</td><td>${what}</td><td>${p.points}</td><td>${p.market === 'parlay' ? '' : signed(p.price)}</td><td>${result(p)}</td></tr>`;
+          })
+          .join('')}</table>`
+      : '<div class="muted">No picks in this contest.</div>';
+    return `<div class="card" style="margin-top:12px;background:var(--card2)">
+      <div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0">${esc(u.displayName)}</h3>
+        <button class="small ghost" data-act="closePlayer" data-id="${esc(r.contestId)}">Close</button></div>
+      <table style="margin-top:8px">
+        ${row('Signed up', u.joined ? when(u.joined) : null)}
+        ${row('Sign-in', esc(u.signIn))}
+        ${row('Email', esc(u.email))}
+        ${row('Phone', u.phone ? esc(u.phone) + (u.phoneVerified ? ' (verified)' : '') : null)}
+        ${row('Location', esc(u.region))}
+        ${row('Birth date', esc(u.birthDate))}
+        ${row('Career', s ? `${s.wins}-${s.losses}${s.ties ? `-${s.ties}` : ''} · ${plural(s.contestsJoined, 'contest')} · ${s.contestsWon} won · ${plural(s.reloads, 'refill')}` : null)}
+        ${row('This contest', e ? `${e.balance} pts now · joined ${when(e.joined)} · ${plural(e.pointsVideos.length, 'points video')}${e.pointsVideos.length ? ` (${e.pointsVideos.map(when).join(', ')})` : ''}` : 'Not entered')}
+      </table>
+      ${flags}
+      <h3 style="margin:14px 0 6px">Picks in this contest (${r.picks.length})</h3>
+      ${picks}
+    </div>`;
+  }
 
   async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -453,8 +506,15 @@
       } else if (b.dataset.act === 'standings') {
         const r = await api(`/admin/competitions/${c.id}/standings`);
         $(`st-${c.id}`).innerHTML = r.standings.length
-          ? `<table><tr><th>#</th><th>Player</th><th>Pts</th><th>Refills</th><th>Win %</th><th>W-L</th></tr>${r.standings.map((s) => `<tr><td>${s.rank}</td><td>${esc(s.displayName)}</td><td>${s.score}</td><td>${s.refills}</td><td>${s.wins + s.losses ? Math.round(s.winPct * 100) + '%' : '-'}</td><td>${s.wins}-${s.losses}</td></tr>`).join('')}</table><div class="muted" style="margin-top:6px">Most points wins. Ties go to fewest refills, then best win % (forfeits count as losses, pushes don't count), then most winning picks. If still tied, every tied player wins the full prize.</div>`
+          ? `<table><tr><th>#</th><th>Player</th><th>Pts</th><th>Refills</th><th>Win %</th><th>W-L</th></tr>${r.standings.map((s) => `<tr><td>${s.rank}</td><td><button class="link" data-act="player" data-id="${c.id}" data-uid="${esc(s.userId)}">${esc(s.displayName)}</button></td><td>${s.score}</td><td>${s.refills}</td><td>${s.wins + s.losses ? Math.round(s.winPct * 100) + '%' : '-'}</td><td>${s.wins}-${s.losses}</td></tr>`).join('')}</table><div class="muted" style="margin-top:6px">Tap a name to see the player's details and every pick they made here. Most points wins. Ties go to fewest refills, then best win % (forfeits count as losses, pushes don't count), then most winning picks. If still tied, every tied player wins the full prize.</div><div id="pl-${c.id}"></div>`
           : '<div class="muted">No entrants yet.</div>';
+      } else if (b.dataset.act === 'player') {
+        const r = await api(`/admin/competitions/${c.id}/players/${encodeURIComponent(b.dataset.uid)}`);
+        const box = $(`pl-${c.id}`);
+        box.innerHTML = playerPanel(r);
+        box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else if (b.dataset.act === 'closePlayer') {
+        $(`pl-${c.id}`).innerHTML = '';
       }
     } catch (err) { if (err.message !== 'auth') show(msg, err.message, false); }
   });

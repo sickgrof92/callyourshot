@@ -177,6 +177,18 @@ describe('contests (players)', () => {
     ]);
     expect(detail.me).toEqual({ rank: 1, score: 16.66 });
 
+    // The admin can open a player from the standings and see their details and picks there.
+    const st = (await app.inject({ method: 'GET', url: `/admin/competitions/${id}/standings`, headers: ADMIN })).json().standings;
+    const aliceId = st[0].userId as string;
+    expect(st[0].displayName).toBe('alice');
+    expect((await app.inject({ method: 'GET', url: `/admin/competitions/${id}/players/${aliceId}` })).statusCode).toBe(403);
+    const pl = (await app.inject({ method: 'GET', url: `/admin/competitions/${id}/players/${aliceId}`, headers: ADMIN })).json();
+    expect(pl.player).toMatchObject({ displayName: 'alice' });
+    expect(pl.entry).toMatchObject({ balance: 16.66 });
+    expect(pl.entry.pointsVideos).toHaveLength(1);
+    expect(pl.picks).toHaveLength(1);
+    expect(pl.picks[0]).toMatchObject({ market: 'moneyline', selection: 'home', points: 10, status: 'won', payout: 16.66 });
+
     // Once everything is graded, the scheduler picks the winner on its own.
     expect(finalizeEndedContests(db, et(2026, 11, 22, 1)).map((x) => x.id)).toEqual([id]);
     expect(finalizeEndedContests(db, et(2026, 11, 22, 2))).toEqual([]);
