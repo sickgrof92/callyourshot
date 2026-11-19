@@ -55,6 +55,16 @@ export interface Config {
 
   /** Gap between score checks once a game with pending picks should be over (normal mode, not the free-tier lean mode). */
   scoresIntervalMs: number;
+  /**
+   * From this time on (epoch ms), lines for sports with games still to start
+   * today refresh every `linesIntervalMs` instead of the near/far schedule.
+   * Null = never. Needs a paid Odds API plan: the free tier stays on its
+   * once-a-day schedule.
+   */
+  hourlyLinesFrom: number | null;
+  linesIntervalMs: number;
+  /** On the hourly schedule, the first refresh of each day is at this local hour (lines from the day before stay until then). */
+  linesStartHour: number;
   minPickPoints: number;
   maxPickPoints: number;
 
@@ -116,6 +126,13 @@ export function loadConfig(): Config {
 
     // 30 minutes suits small plans; use 5 on a paid Odds API plan so picks grade within minutes.
     scoresIntervalMs: num('SCORES_INTERVAL_MINUTES', 30) * 60_000,
+    // e.g. 2026-11-20T05:00:00-05:00. Unset or not a date = keep the near/far schedule.
+    hourlyLinesFrom: (() => {
+      const t = Date.parse(str('HOURLY_LINES_FROM', ''));
+      return Number.isFinite(t) ? t : null;
+    })(),
+    linesIntervalMs: num('LINES_INTERVAL_MINUTES', 60) * 60_000,
+    linesStartHour: num('LINES_START_HOUR', 8),
     minPickPoints: num('MIN_PICK_POINTS', 1),
     maxPickPoints: num('MAX_PICK_POINTS', 500),
 
