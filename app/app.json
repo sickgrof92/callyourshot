@@ -52,7 +52,8 @@
           "userTrackingPermission": "Call Your Shot is free because of ads. Allowing tracking lets us show ads that are more relevant to you. You can still play either way."
         }
       ],
-      "./plugins/withOptionalPortrait"
+      "./plugins/withOptionalPortrait",
+      "./plugins/withNoR8"
     ]
   }
 }
