@@ -27,7 +27,11 @@ describe('payouts', () => {
   it('converts prices to multipliers', () => {
     expect(payoutMultiplier(150)).toBe(2.5);
     expect(payoutMultiplier(-200)).toBe(1.5);
-    expect(winPayout(100, -110)).toBe(190);
+    // Paid to the hundredth, rounded down.
+    expect(winPayout(100, -110)).toBe(190.9);
+    expect(winPayout(10, -110)).toBe(19.09);
+    expect(winPayout(10, -150)).toBe(16.66);
     expect(winPayout(10, 130)).toBe(23);
+    expect(winPayout(7, 105)).toBe(14.35);
   });
 });

@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api, ApiError, type LineQuote } from '../lib/api';
 import { useContests } from '../lib/contests';
-import { lineLabel, marketName, signed } from '../lib/format';
+import { lineLabel, marketName, signed, pts } from '../lib/format';
 import { tap } from '../lib/haptics';
 import { useSession } from '../lib/session';
 import { colors, space } from '../lib/theme';
@@ -38,9 +38,9 @@ function mult(price: number) {
   return price > 0 ? 1 + price / 100 : 1 + 100 / Math.abs(price);
 }
 
-/** Points back on a winning parlay, matching the server's rounding. */
+/** Points back on a winning parlay, to the hundredth (rounded down), matching the server. */
 function parlayReturn(points: number, prices: number[]) {
-  return Math.floor(points * prices.reduce((m, p) => m * mult(p), 1) + 1e-9);
+  return Math.floor(points * prices.reduce((m, p) => m * mult(p), 1) * 100 + 1e-6) / 100;
 }
 
 function combinations<T>(items: T[], k: number): T[][] {
@@ -261,7 +261,7 @@ export function ParlaySheet({
               <Text style={styles.confirmLine}>{robin ? `${count} parlays × ${points} pts = ${total} pts` : `${points} pts on a ${n}-pick parlay`}</Text>
               <Text style={styles.ret}>
                 {robin ? 'If every pick wins, get back ' : 'Win and get back '}
-                <Text style={{ color: colors.win, fontWeight: '800' }}>{bestReturn} pts</Text>
+                <Text style={{ color: colors.win, fontWeight: '800' }}>{pts(bestReturn)} pts</Text>
               </Text>
             </View>
             {message && <Text style={styles.msg}>{message}</Text>}
@@ -273,7 +273,7 @@ export function ParlaySheet({
             <PointsPicker value={points} max={maxEach} onChange={setPoints} />
             <Text style={styles.ret}>
               {robin ? `${count} parlays · ${total} pts total. If every pick wins, get back ` : 'Win and get back '}
-              <Text style={{ color: colors.win, fontWeight: '800' }}>{bestReturn} pts</Text>
+              <Text style={{ color: colors.win, fontWeight: '800' }}>{pts(bestReturn)} pts</Text>
             </Text>
             {message && <Text style={styles.msg}>{message}</Text>}
             <GameButton title="Watch ad to confirm" size="lg" icon="play-circle" busy={busy} onPress={watchAd} />

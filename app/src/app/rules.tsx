@@ -12,7 +12,7 @@ const RULES: [string, string][] = [
   ],
   [
     'Getting points',
-    'In each contest, you are awarded 10 points after watching a short ad. You can refill your points this way up to 5 times per day in each contest whenever you are out of points there: exactly 0 points, with no picks still waiting to be graded. Your first 10 points when you join a contest are your starting points, not a refill: they do not count toward the 5 per day, toward refills used in tiebreakers, or toward reloads in your stats. Winning picks pay points back based on how many points you picked with and the line.',
+    'In each contest, you are awarded 10 points after watching a short ad. You can refill your points this way up to 5 times per day in each contest whenever you are out of points there: less than 1 point, with no picks still waiting to be graded. Your first 10 points when you join a contest are your starting points, not a refill: they do not count toward the 5 per day, toward refills used in tiebreakers, or toward reloads in your stats. Winning picks pay points back based on how many points you picked with and the line, to the hundredth of a point (rounded down).',
   ],
   [
     'Making picks',

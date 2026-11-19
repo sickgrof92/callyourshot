@@ -6,7 +6,7 @@ import { Celebration, type CelebrationInfo } from '../../components/Celebration'
 import { ContestSwitcher } from '../../components/ContestSwitcher';
 import { GameButton } from '../../components/GameButton';
 import { api, ApiError, type ParlayLeg, type Pick } from '../../lib/api';
-import { gameTime, lineLabel, marketName, signed } from '../../lib/format';
+import { gameTime, lineLabel, marketName, signed, pts } from '../../lib/format';
 import { useContests } from '../../lib/contests';
 import { useSession } from '../../lib/session';
 import { warn } from '../../lib/haptics';
@@ -26,7 +26,7 @@ function statusOf(p: Pick) {
 }
 
 function result(p: Pick): string {
-  if (p.status === 'won') return `+${(p.payout ?? 0) - p.points} pts`;
+  if (p.status === 'won') return `+${pts((p.payout ?? 0) - p.points)} pts`;
   if (p.status === 'lost') return `-${p.points} pts`;
   if (p.status === 'push' || p.status === 'void') return `${p.points} pts back`;
   return `${p.points} pts in play`;
@@ -95,7 +95,7 @@ export default function MyPicks() {
       const fresh = await newWins(everything);
       if (fresh.length > 0) {
         const gained = fresh.reduce((n, p) => n + (p.payout ?? 0) - p.points, 0);
-        setParty({ title: fresh.length === 1 ? 'YOU WON!' : `${fresh.length} WINS!`, subtitle: `+${gained} pts`, color: colors.win });
+        setParty({ title: fresh.length === 1 ? 'PICK WON!' : `${fresh.length} PICKS WON!`, subtitle: `+${pts(gained)} pts`, color: colors.win });
       }
     } finally {
       setLoading(false);

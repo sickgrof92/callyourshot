@@ -262,7 +262,7 @@
     }
     actions.push(`<button class="small ghost" data-act="copy" data-id="${c.id}">Copy ${c.kind === 'daily' ? 'to next day' : '7 days later'}</button>`);
     if (c.status !== 'upcoming') actions.push(`<button class="small ghost" data-act="standings" data-id="${c.id}">Standings</button>`);
-    if (c.status === 'ended' && !c.winner) actions.push(`<button class="small" data-act="finalize" data-id="${c.id}">Pick winner</button>`);
+    if (c.status === 'ended' && !c.winner) actions.push(`<button class="small" data-act="finalize" data-id="${c.id}">Pick winner now</button>`);
     return `<div class="card contest">
       <span class="badge ${c.status}">${c.status} · ${c.kind}</span>
       <h3>${esc(c.name)}</h3>
@@ -342,7 +342,7 @@
     const warn = r.claimsKeySet ? '' : '<div class="msg err">CLAIMS_KEY is not set on the server, so winners cannot send their details. Add it in Render before any contest ends.</div>';
     const open = claims.filter((c) => c.status === 'pending' || c.status === 'submitted').length;
     $('claims').previousElementSibling.textContent = `Winners (${open} open)`;
-    $('claims').innerHTML = warn + (claims.length ? claims.map(claimCard).join('') : '<div class="muted">No winners yet. Tap Pick winner on an ended contest.</div>');
+    $('claims').innerHTML = warn + (claims.length ? claims.map(claimCard).join('') : '<div class="muted">No winners yet. Winners are picked automatically once a contest ends and all its picks are graded.</div>');
   }
   function claimCard(c) {
     const f = c.form || {};

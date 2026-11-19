@@ -142,7 +142,7 @@ export default function Contests() {
             <Text style={styles.sub}>Free to join, as many as you like. Each contest starts you with 10 points and your own 5 refills per day.</Text>
 
             {toClaim.map((c) => (
-              <GameButton key={c.id} title={`You won ${c.prize}! Claim it`} variant="primary" icon="gift" heavy onPress={() => router.push(`/claim/${c.id}`)} />
+              <GameButton key={c.id} title={`You won ${c.name}! Claim your prize`} variant="primary" icon="gift" heavy onPress={() => router.push(`/claim/${c.id}`)} />
             ))}
 
             <View style={styles.bar}>

@@ -14,7 +14,8 @@ export function postLedger(
   entry: { userId: string; competitionId: string; kind: LedgerKind; amount: number; ref: string | null; at: number },
 ): number {
   const res = db
-    .prepare('UPDATE competition_entries SET balance = balance + ? WHERE competition_id = ? AND user_id = ? AND balance + ? >= 0')
+    // Points go to the hundredth; rounding here keeps tiny float errors from piling up.
+    .prepare('UPDATE competition_entries SET balance = ROUND(balance + ?, 2) WHERE competition_id = ? AND user_id = ? AND ROUND(balance + ?, 2) >= 0')
     .run(entry.amount, entry.competitionId, entry.userId, entry.amount);
   if (res.changes !== 1) throw new InsufficientPointsError();
   db.prepare('INSERT INTO ledger (user_id, competition_id, kind, amount, ref, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
@@ -46,9 +47,13 @@ export function payoutMultiplier(price: number): number {
   return price > 0 ? 1 + price / 100 : 1 + 100 / Math.abs(price);
 }
 
-/** Points returned on a winning pick (stake included). Rounded down. */
+/** Round to the hundredth of a point. */
+export const roundPts = (n: number): number => Math.round(n * 100) / 100;
+
+/** Points returned on a winning pick (stake included), rounded down to the hundredth. */
 export function winPayout(stake: number, price: number): number {
-  // Integer math so 10 points at +130 pays exactly 23, not 22.
-  const profit = price > 0 ? Math.floor((stake * price) / 100) : Math.floor((stake * 100) / Math.abs(price));
-  return stake + profit;
+  // Work in hundredths with integer math, so 10 at -150 pays exactly 16.66 and 10 at +130 exactly 23.
+  const cents = Math.round(stake * 100);
+  const profit = price > 0 ? Math.floor((cents * price) / 100) : Math.floor((cents * 100) / Math.abs(price));
+  return (cents + profit) / 100;
 }

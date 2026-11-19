@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Contest } from '../lib/api';
-import { contestClock } from '../lib/format';
+import { contestClock, pts } from '../lib/format';
 import { colors, glow, kindColor, space } from '../lib/theme';
 import { GameButton } from './GameButton';
 import { Meter } from './Meter';
@@ -39,7 +39,7 @@ export function ContestCard({ c, onJoin, joining }: { c: Contest; onJoin: (c: Co
           <Text style={styles.ended}>{c.winner ? `Winner: ${c.winner}` : 'Final results coming soon'}</Text>
         ) : c.joined ? (
           <View style={{ flexDirection: 'row', gap: space.sm, alignItems: 'center' }}>
-            <Text style={styles.inPts}>{c.mine?.balance ?? 0} pts</Text>
+            <Text style={styles.inPts}>{pts(c.mine?.balance ?? 0)} pts</Text>
             <GameButton title="You're in · View board" variant="ghost" size="sm" icon="checkmark-circle" style={{ flex: 1 }} onPress={() => router.push(`/contest/${c.id}`)} />
           </View>
         ) : full ? (

@@ -9,7 +9,9 @@ import { PointsCounter } from './PointsCounter';
 
 const CHIPS = [1, 5, 10, 25, 50, 100];
 
-export function PointsPicker({ value, max, onChange, suffix = ' pts' }: { value: number; max: number; onChange: (n: number) => void; suffix?: string }) {
+export function PointsPicker({ value, max: rawMax, onChange, suffix = ' pts' }: { value: number; max: number; onChange: (n: number) => void; suffix?: string }) {
+  // Picks are whole points, even when the balance has hundredths (16.66 -> up to 16).
+  const max = Math.floor(rawMax);
   const set = (n: number) => onChange(Math.max(1, Math.min(max, n)));
   const chips = [...CHIPS.filter((c) => c < max), max].filter((v, i, a) => v >= 1 && a.indexOf(v) === i);
   return (
