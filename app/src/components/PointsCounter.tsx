@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { pts } from '../lib/format';
 import { Animated, Easing, type StyleProp, type TextStyle } from 'react-native';
 
 /** A number that rolls up or down to its new value and pops when it changes. */
@@ -9,7 +10,7 @@ export function PointsCounter({ value, style, suffix = '' }: { value: number; st
   const first = useRef(true);
 
   useEffect(() => {
-    const id = roll.addListener(({ value: v }) => setShown(Math.round(v)));
+    const id = roll.addListener(({ value: v }) => setShown(Math.round(v * 100) / 100));
     return () => roll.removeListener(id);
   }, [roll]);
 
@@ -27,7 +28,7 @@ export function PointsCounter({ value, style, suffix = '' }: { value: number; st
 
   return (
     <Animated.Text style={[style, { transform: [{ scale: pop }] }]}>
-      {shown}
+      {pts(shown)}
       {suffix}
     </Animated.Text>
   );

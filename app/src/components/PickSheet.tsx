@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { api, ApiError, type Game, type LineQuote, type Market, type Selection } from '../lib/api';
-import { lineLabel, marketName, signed } from '../lib/format';
+import { lineLabel, marketName, signed, pts } from '../lib/format';
 import { useContests } from '../lib/contests';
 import { useSession } from '../lib/session';
 import { colors, space } from '../lib/theme';
@@ -21,9 +21,10 @@ export interface PickTarget {
 const DEFAULT_POINTS = 10;
 const MAX = 500;
 
-/** Points you'd get back on a win, matching the server's integer math. */
+/** Points you'd get back on a win, to the hundredth (rounded down), matching the server's math. */
 function winReturn(points: number, price: number) {
-  return points + (price > 0 ? Math.floor((points * price) / 100) : Math.floor((points * 100) / Math.abs(price)));
+  const cents = Math.round(points * 100);
+  return (cents + (price > 0 ? Math.floor((cents * price) / 100) : Math.floor((cents * 100) / Math.abs(price)))) / 100;
 }
 
 /** The pick being changed, when the sheet is used to change one instead of making a new one. */
@@ -151,7 +152,7 @@ export function PickSheet({
                 {points} pts on {lineLabel(market, selection, quote.point, game.homeTeam, game.awayTeam)}
               </Text>
               <Text style={styles.ret}>
-                Win and get back <Text style={{ color: colors.win, fontWeight: '800' }}>{winReturn(points, quote.price)} pts</Text>
+                Win and get back <Text style={{ color: colors.win, fontWeight: '800' }}>{pts(winReturn(points, quote.price))} pts</Text>
               </Text>
             </View>
             {message && <Text style={styles.msg}>{message}</Text>}
@@ -165,7 +166,7 @@ export function PickSheet({
           <>
             <PointsPicker value={points} max={maxPoints} onChange={setPoints} />
             <Text style={styles.ret}>
-              Win and get back <Text style={{ color: colors.win, fontWeight: '800' }}>{winReturn(points, quote.price)} pts</Text>
+              Win and get back <Text style={{ color: colors.win, fontWeight: '800' }}>{pts(winReturn(points, quote.price))} pts</Text>
             </Text>
             {message && <Text style={styles.msg}>{message}</Text>}
             <GameButton title={changing ? 'Watch short ad to change pick' : 'Watch ad to confirm pick'} size="lg" icon="play-circle" busy={busy} onPress={watchAd} />

@@ -72,12 +72,12 @@ describe('parlays', () => {
     expect(s.score('g2', 90, 100)).toBe(0);
     expect(s.score('g3', 30, 20)).toBe(1);
     const expected = parlayPayout(10, [-150, 130, -110]);
-    expect(expected).toBe(73); // 10 × 1.667 × 2.3 × 1.909
+    expect(expected).toBe(73.18); // 10 × 1.667 × 2.3 × 1.909, to the hundredth
     expect(s.balance(p.uid)).toBe(40 + expected);
 
     const mine = (await s.app.inject({ method: 'GET', url: `/picks?competitionId=${s.cid}`, headers: auth(p.token) })).json().picks;
     expect(mine).toHaveLength(1);
-    expect(mine[0]).toMatchObject({ market: 'parlay', selection: 'parlay', status: 'won', payout: 73 });
+    expect(mine[0]).toMatchObject({ market: 'parlay', selection: 'parlay', status: 'won', payout: 73.18 });
     expect(mine[0].legs.map((l: { status: string }) => l.status)).toEqual(['won', 'won', 'won']);
   });
 

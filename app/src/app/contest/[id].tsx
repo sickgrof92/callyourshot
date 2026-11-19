@@ -10,7 +10,7 @@ import { RankBadge } from '../../components/RankBadge';
 import { router } from 'expo-router';
 import { api, ApiError, type ContestDetail } from '../../lib/api';
 import { useContests } from '../../lib/contests';
-import { contestClock, contestDates } from '../../lib/format';
+import { contestClock, contestDates, pts } from '../../lib/format';
 import { warn } from '../../lib/haptics';
 import { useSession } from '../../lib/session';
 import { useAd } from '../../lib/useAd';
@@ -134,7 +134,7 @@ export default function ContestScreen() {
                   <RankBadge rank={data.me.rank} size={48} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.meLabel}>{c.status === 'ended' ? 'YOUR FINAL RANK' : 'YOUR RANK'}</Text>
-                    <Text style={styles.meScore}>{data.me.score} pts</Text>
+                    <Text style={styles.meScore}>{pts(data.me.score)} pts</Text>
                   </View>
                   {c.status !== 'ended' && (
                     <GameButton
@@ -169,7 +169,7 @@ export default function ContestScreen() {
                 {item.displayName}
                 {mine ? ' (you)' : ''}
               </Text>
-              <Text style={[styles.score, item.rank === 1 && glow(colors.accent, 8)]}>{item.score}</Text>
+              <Text style={[styles.score, item.rank === 1 && glow(colors.accent, 8)]}>{pts(item.score)}</Text>
             </Pressable>
           );
         }}

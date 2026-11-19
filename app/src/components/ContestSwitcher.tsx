@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useContests } from '../lib/contests';
 import { tap } from '../lib/haptics';
 import { colors, kindColor, space } from '../lib/theme';
+import { pts } from '../lib/format';
 import { GameButton } from './GameButton';
 
 /** The bar at the top of Games, Points and My Picks: which contest you're playing. */
@@ -35,7 +36,7 @@ export function ContestSwitcher() {
             <Text style={[styles.chipName, { color: on ? color : colors.muted }]} numberOfLines={1}>
               {c.name}
             </Text>
-            <Text style={[styles.chipPts, { color: on ? colors.accent : colors.muted }]}>{c.mine?.balance ?? 0} pts{c.status === 'upcoming' ? ' · opens soon' : ''}</Text>
+            <Text style={[styles.chipPts, { color: on ? colors.accent : colors.muted }]}>{pts(c.mine?.balance ?? 0)} pts{c.status === 'upcoming' ? ' · opens soon' : ''}</Text>
           </Pressable>
         );
       })}

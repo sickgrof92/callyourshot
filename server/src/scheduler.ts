@@ -17,6 +17,7 @@ import type { BudgetStatus } from './budget.ts';
 import { currentRemaining, getBudgetStatus, recordApiCall } from './budget.ts';
 import type { Config } from './config.ts';
 import type { DB } from './db.ts';
+import { finalizeEndedContests } from './competitions.ts';
 import { gradeEvent, voidPostponed, voidStalePicks } from './grading.ts';
 import { applyScores, ingestOdds, upsertEvents } from './lines.ts';
 import { OddsApiError, oddsCallCost, SCORES_CALL_COST, type ApiUsage, type OddsApi } from './oddsApi.ts';
@@ -326,6 +327,11 @@ export async function tick(db: DB, cfg: Config, api: OddsApi, now: number, log?:
     )
     .all() as { id: string }[];
   for (const { id } of leftover) graded += gradeEvent(db, id, now);
+
+  // Contests that have ended and are fully graded get their winner now.
+  for (const c of finalizeEndedContests(db, now)) {
+    log?.info({ id: c.id, winner: c.winner_user_id }, `Contest "${c.name}" ended: winner picked.`);
+  }
 
   if (odds.length || decision.scores.length) {
     log?.info(

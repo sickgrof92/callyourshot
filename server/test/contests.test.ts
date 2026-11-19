@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.ts';
-import { ensureTestContests } from '../src/competitions.ts';
+import { ensureTestContests, finalizeEndedContests } from '../src/competitions.ts';
 import { gradeEvent } from '../src/grading.ts';
 import { applyScores, ingestOdds } from '../src/lines.ts';
 import { et, FakeOddsApi, testConfig, testDb } from './helpers.ts';
@@ -164,17 +164,22 @@ describe('contests (players)', () => {
     setClock(et(2026, 11, 22, 1));
     const pending = await app.inject({ method: 'POST', url: `/admin/competitions/${id}/finalize`, headers: ADMIN });
     expect(pending.json().error).toMatch(/waiting to be graded/);
+    // The automatic pass also waits for grading.
+    expect(finalizeEndedContests(db, et(2026, 11, 22, 1))).toEqual([]);
 
     applyScores(db, [{ id: 'g1', sport_key: 'basketball_nba', commence_time: '', home_team: 'Knicks', away_team: 'Celtics', completed: true, scores: [{ name: 'Knicks', score: '110' }, { name: 'Celtics', score: '100' }] }], et(2026, 11, 22, 1));
     expect(gradeEvent(db, 'g1', et(2026, 11, 22, 1))).toBe(1);
 
     const detail = (await app.inject({ method: 'GET', url: `/competitions/${id}`, headers: auth(a) })).json();
     expect(detail.standings).toEqual([
-      { rank: 1, displayName: 'alice', score: 16 }, // 10 at -150 pays 16
+      { rank: 1, displayName: 'alice', score: 16.66 }, // 10 at -150 pays 16.66
       { rank: 2, displayName: 'bob', score: 10 },
     ]);
-    expect(detail.me).toEqual({ rank: 1, score: 16 });
+    expect(detail.me).toEqual({ rank: 1, score: 16.66 });
 
+    // Once everything is graded, the scheduler picks the winner on its own.
+    expect(finalizeEndedContests(db, et(2026, 11, 22, 1)).map((x) => x.id)).toEqual([id]);
+    expect(finalizeEndedContests(db, et(2026, 11, 22, 2))).toEqual([]);
     const done = await app.inject({ method: 'POST', url: `/admin/competitions/${id}/finalize`, headers: ADMIN });
     expect(done.json()).toMatchObject({ status: 'ended', winner: 'alice' });
 

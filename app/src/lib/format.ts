@@ -2,6 +2,9 @@ import type { Market, Selection } from './api';
 
 export const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
 
+/** Points to the hundredth, without trailing zeros: 16.66, 16.5, 16. */
+export const pts = (n: number) => (Math.round(n * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 });
+
 /** Short label for a line, e.g. "Knicks -3.5", "Over 221.5", "Knicks to win". */
 export function lineLabel(market: Market, selection: Selection, point: number | null, home: string, away: string): string {
   const team = selection === 'home' ? home : away;

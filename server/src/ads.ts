@@ -77,7 +77,8 @@ export function adEligibility(db: DB, cfg: Config, userId: string, competitionId
     pointsAdsToday: refillsToday,
     hasStartingPoints: first.t !== null,
     pointsAdsPerDay: cfg.pointsAdsPerDay,
-    canEarnPoints: joined && live && balance === 0 && pending.n === 0 && (first.t === null || refillsToday < cfg.pointsAdsPerDay),
+    // Under the smallest pick (e.g. 0.67 left over) counts as out of points.
+    canEarnPoints: joined && live && balance < cfg.minPickPoints && pending.n === 0 && (first.t === null || refillsToday < cfg.pointsAdsPerDay),
     balance,
     pendingPicks: pending.n,
     joined,
@@ -88,7 +89,7 @@ export function adEligibility(db: DB, cfg: Config, userId: string, competitionId
 function refusal(e: AdEligibility, cfg: Config): Refusal | null {
   if (!e.joined) return 'not_joined';
   if (!e.live) return 'contest_not_live';
-  if (e.balance > 0) return 'not_out_of_points';
+  if (e.balance >= cfg.minPickPoints) return 'not_out_of_points';
   if (e.pendingPicks > 0) return 'points_in_play';
   if (e.hasStartingPoints && e.pointsAdsToday >= e.pointsAdsPerDay) return 'daily_limit';
   return null;

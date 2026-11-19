@@ -138,9 +138,9 @@ describe('end-to-end', () => {
     applyScores(db, [{ id: 'g1', sport_key: 'basketball_nba', commence_time: '', home_team: 'Knicks', away_team: 'Celtics', completed: true, scores: [{ name: 'Knicks', score: '110' }, { name: 'Celtics', score: '100' }] }], end);
     expect(gradeEvent(db, 'g1', end)).toBe(2);
 
-    expect((await mine(app, a, cid)).balance).toBe(19); // 10 at -110 pays 19
+    expect((await mine(app, a, cid)).balance).toBe(19.09); // 10 at -110 pays 19.09
     board = (await app.inject({ method: 'GET', url: `/competitions/${cid}`, headers: auth(b) })).json();
-    expect(board.standings.map((s: { displayName: string; score: number }) => [s.displayName, s.score])).toEqual([['alice', 19], ['bob', 0]]);
+    expect(board.standings.map((s: { displayName: string; score: number }) => [s.displayName, s.score])).toEqual([['alice', 19.09], ['bob', 0]]);
     expect(board.me).toEqual({ score: 0, rank: 2 });
     // Bob is out with nothing in play, so he can watch for points again.
     expect((await mine(app, b, cid)).canEarnPoints).toBe(true);

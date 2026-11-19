@@ -88,10 +88,10 @@ export function gradeEvent(db: DB, eventId: string, now: number): number {
 // and the parlay pays on the games left (all of them dropping out refunds it).
 // One losing game loses the parlay right away.
 
-/** Points returned on a winning parlay: stake times every winning game's multiplier, rounded down. */
+/** Points returned on a winning parlay: stake times every winning game's multiplier, rounded down to the hundredth. */
 export function parlayPayout(stake: number, prices: number[]): number {
   const m = prices.reduce((acc, p) => acc * payoutMultiplier(p), 1);
-  return Math.floor(stake * m + 1e-9);
+  return Math.floor(stake * m * 100 + 1e-6) / 100;
 }
 
 /** Grade (or refund) the parlay games on one event, then settle the parlays that are now decided. Returns parlays settled. */

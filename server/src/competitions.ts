@@ -180,8 +180,8 @@ export function contestStandings(db: DB, c: Competition, limit = 500): ContestSt
   const rows = db
     .prepare(
       `SELECT e.user_id AS userId, u.display_name AS displayName,
-              e.balance + COALESCE((SELECT SUM(p.stake) FROM picks p
-                                    WHERE p.competition_id = e.competition_id AND p.user_id = e.user_id AND p.status = 'pending'), 0) AS score,
+              ROUND(e.balance + COALESCE((SELECT SUM(p.stake) FROM picks p
+                                    WHERE p.competition_id = e.competition_id AND p.user_id = e.user_id AND p.status = 'pending'), 0), 2) AS score,
               MAX(0, (SELECT COUNT(*) FROM ad_sessions a
                WHERE a.competition_id = e.competition_id AND a.user_id = e.user_id AND a.purpose = 'points' AND a.rewarded_at IS NOT NULL) - 1) AS refills,
               (SELECT COUNT(*) FROM picks p WHERE p.competition_id = e.competition_id AND p.user_id = e.user_id AND p.status = 'won') AS wins,
@@ -227,6 +227,22 @@ export function finalizeCompetition(db: DB, id: string, now: number): Result<Com
     for (const w of winners) openClaim(db, id, w.userId, now);
   });
   return { ok: true, value: getCompetition(db, id)! };
+}
+
+/**
+ * Picks the winner of every contest that has ended and whose picks are all
+ * graded: the highest score, with the usual tiebreakers. Runs on every
+ * scheduler pass, so no one has to do it by hand. Returns the contests it just
+ * finished. A contest still waiting on grading is tried again next pass.
+ */
+export function finalizeEndedContests(db: DB, now: number): Competition[] {
+  const due = db.prepare('SELECT id FROM competitions WHERE ends_at <= ? AND finalized_at IS NULL ORDER BY ends_at').all(now) as { id: string }[];
+  const done: Competition[] = [];
+  for (const { id } of due) {
+    const res = finalizeCompetition(db, id, now);
+    if (res.ok) done.push(res.value);
+  }
+  return done;
 }
 
 const fmtDay = (ms: number, tz: string) =>

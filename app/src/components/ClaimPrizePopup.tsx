@@ -24,10 +24,10 @@ export function ClaimPrizePopup({ contest }: { contest: { id: string; name: stri
       <View style={styles.backdrop}>
         <View style={styles.card}>
           <Ionicons name="trophy" size={56} color={colors.accent} style={{ alignSelf: 'center' }} />
-          <Text style={[styles.title, glow(colors.accent, 12)]}>YOU WON!</Text>
+          <Text style={[styles.title, glow(colors.accent, 12)]}>{contest ? `YOU WON ${contest.name.toUpperCase()}!` : 'YOU WON!'}</Text>
           {contest && (
             <Text style={styles.body}>
-              You won <Text style={styles.prize}>{contest.prize}</Text> in {contest.name}. Tap below to claim your prize. We'll ask for your legal name, mailing address and date of birth so we can send it.
+              You finished first. Tap below to claim your prize. We'll ask for your legal name, mailing address and date of birth so we can send it.
             </Text>
           )}
           <GameButton
@@ -68,6 +68,5 @@ const styles = StyleSheet.create({
   },
   title: { color: colors.accent, fontSize: 30, fontWeight: '900', letterSpacing: 2, textAlign: 'center' },
   body: { color: colors.text, fontSize: 16, lineHeight: 22, textAlign: 'center' },
-  prize: { color: colors.accent, fontWeight: '900' },
   later: { color: colors.muted, fontWeight: '800', textAlign: 'center', paddingVertical: space.sm },
 });
