@@ -152,7 +152,7 @@ export function PickSheet({
                 {points} pts on {lineLabel(market, selection, quote.point, game.homeTeam, game.awayTeam)}
               </Text>
               <Text style={styles.ret}>
-                Win and get back <Text style={{ color: colors.win, fontWeight: '800' }}>{pts(winReturn(points, quote.price))} pts</Text>
+                Win <Text style={{ color: colors.win, fontWeight: '800' }}>{winReturn(points, quote.price).toFixed(2)} points</Text>
               </Text>
             </View>
             {message && <Text style={styles.msg}>{message}</Text>}
@@ -166,7 +166,7 @@ export function PickSheet({
           <>
             <PointsPicker value={points} max={maxPoints} onChange={setPoints} />
             <Text style={styles.ret}>
-              Win and get back <Text style={{ color: colors.win, fontWeight: '800' }}>{pts(winReturn(points, quote.price))} pts</Text>
+              Win <Text style={{ color: colors.win, fontWeight: '800' }}>{winReturn(points, quote.price).toFixed(2)} points</Text>
             </Text>
             {message && <Text style={styles.msg}>{message}</Text>}
             <GameButton title={changing ? 'Watch short ad to change pick' : 'Watch ad to confirm pick'} size="lg" icon="play-circle" busy={busy} onPress={watchAd} />

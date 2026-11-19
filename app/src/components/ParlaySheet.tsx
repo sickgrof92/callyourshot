@@ -260,8 +260,8 @@ export function ParlaySheet({
               <Text style={styles.confirmTitle}>{changing ? 'Confirm your change' : robin ? 'Confirm your round robin' : 'Confirm your parlay'}</Text>
               <Text style={styles.confirmLine}>{robin ? `${count} parlays × ${points} pts = ${total} pts` : `${points} pts on a ${n}-pick parlay`}</Text>
               <Text style={styles.ret}>
-                {robin ? 'If every pick wins, get back ' : 'Win and get back '}
-                <Text style={{ color: colors.win, fontWeight: '800' }}>{pts(bestReturn)} pts</Text>
+                {robin ? 'Win up to ' : 'Win '}
+                <Text style={{ color: colors.win, fontWeight: '800' }}>{bestReturn.toFixed(2)} points</Text>
               </Text>
             </View>
             {message && <Text style={styles.msg}>{message}</Text>}
@@ -272,8 +272,8 @@ export function ParlaySheet({
             <Text style={styles.label}>{robin ? 'POINTS ON EACH PARLAY' : 'POINTS'}</Text>
             <PointsPicker value={points} max={maxEach} onChange={setPoints} />
             <Text style={styles.ret}>
-              {robin ? `${count} parlays · ${total} pts total. If every pick wins, get back ` : 'Win and get back '}
-              <Text style={{ color: colors.win, fontWeight: '800' }}>{pts(bestReturn)} pts</Text>
+              {robin ? `${count} parlays · ${total} pts total. Win up to ` : 'Win '}
+              <Text style={{ color: colors.win, fontWeight: '800' }}>{bestReturn.toFixed(2)} points</Text>
             </Text>
             {message && <Text style={styles.msg}>{message}</Text>}
             <GameButton title="Watch ad to confirm" size="lg" icon="play-circle" busy={busy} onPress={watchAd} />
