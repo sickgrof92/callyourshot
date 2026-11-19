@@ -1,7 +1,7 @@
 import { expectedEnd } from './gameLength.ts';
 import { PARLAY_MAX_LEGS, placeParlay, ROUND_ROBIN_MAX_PICKS } from './parlays.ts';
 import type { OddsApi } from './oddsApi.ts';
-import { refreshLinesNow } from './scheduler.ts';
+import { LEAN_ALLOWANCE, refreshLinesNow } from './scheduler.ts';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
@@ -38,7 +38,7 @@ import { changePick, forfeitPick, listPicks, placePick } from './picks.ts';
 import { playerStats } from './profiles.ts';
 import { getPrefs, NOTIFY_KINDS, setPrefs } from './notify.ts';
 import { entryBalance, payoutMultiplier } from './points.ts';
-import { HOUR, DAY } from './time.ts';
+import { HOUR, DAY, sportsDay } from './time.ts';
 
 export interface AppDeps {
   db: DB;
@@ -684,6 +684,39 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
   // ---- Admin page -----------------------------------------------------------
 
   const adminHtml = readFileSync(new URL('./admin.html', import.meta.url), 'utf8');
+  /** Per sport: when its lines were last pulled, and how many of today's games have lines. For the admin page. */
+  function linesStatus(now: number) {
+    const day = sportsDay(now, cfg.timeZone, cfg.dayStartHour);
+    const budget = getBudgetStatus(db, cfg, now);
+    const hourly = cfg.hourlyLinesFrom !== null && now >= cfg.hourlyLinesFrom;
+    const schedule =
+      budget.allowanceToday < LEAN_ALLOWANCE
+        ? 'once a day per sport, about 2 hours before its first game (free Odds API plan)'
+        : hourly
+          ? `every ${Math.round(cfg.linesIntervalMs / 60_000)} minutes from ${cfg.linesStartHour}:00 until each sport's last game starts`
+          : `every 4 hours, then every 30 minutes in the 3 hours before games${cfg.hourlyLinesFrom !== null ? ` (hourly starts ${new Date(cfg.hourlyLinesFrom).toISOString()})` : ''}`;
+    const state = db.prepare('SELECT last_odds_at FROM sport_state WHERE sport = ?');
+    const games = db.prepare(
+      `SELECT COUNT(*) AS n, SUM(CASE WHEN EXISTS (SELECT 1 FROM lines l WHERE l.event_id = e.id) THEN 1 ELSE 0 END) AS withLines
+       FROM events e WHERE e.sport = ? AND e.cancelled = 0 AND e.commence_time >= ? AND e.commence_time < ?`,
+    );
+    return {
+      apiKeySet: !!cfg.oddsApiKey,
+      schedule,
+      sports: cfg.sports.map((sport) => {
+        const st = state.get(sport) as { last_odds_at: number | null } | undefined;
+        const g = games.get(sport, day.start, day.end) as { n: number; withLines: number | null };
+        return {
+          sport,
+          label: SPORT_LABELS[sport] ?? sport,
+          lastPulled: st?.last_odds_at ? new Date(st.last_odds_at).toISOString() : null,
+          gamesToday: g.n,
+          withLines: g.withLines ?? 0,
+        };
+      }),
+    };
+  }
+
   app.get('/admin', async (_req, reply) => reply.type('text/html; charset=utf-8').header('cache-control', 'no-store').send(adminHtml));
 
   const contestBody = z.object({
@@ -717,6 +750,7 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
       ),
       competitions: rows.map((c) => contestJson(c, now, null)),
       budget: (({ remaining, allowanceToday, spentToday, mode }) => ({ remaining, allowanceToday, spentToday, mode }))(getBudgetStatus(db, cfg, now)),
+      lines: linesStatus(now),
     };
   });
 

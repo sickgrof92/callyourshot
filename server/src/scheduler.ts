@@ -22,7 +22,7 @@ import { gradeEvent, voidPostponed, voidStalePicks } from './grading.ts';
 import { applyScores, ingestOdds, upsertEvents } from './lines.ts';
 import { OddsApiError, oddsCallCost, SCORES_CALL_COST, type ApiUsage, type OddsApi } from './oddsApi.ts';
 import { gameLength } from './gameLength.ts';
-import { DAY, HOUR, sportsDay } from './time.ts';
+import { DAY, HOUR, sportsDay, zonedParts, zonedToEpoch } from './time.ts';
 
 const MIN = 60_000;
 export const NEAR_WINDOW = 3 * HOUR;
@@ -40,17 +40,19 @@ export { GAME_LENGTH, gameLength } from './gameLength.ts';
 
 /**
  * When the next line refresh is due, given the last refresh and the next game to start.
- * Returns -Infinity if never refreshed (due now).
+ * Returns -Infinity if never refreshed (due now). With `every` set (the hourly
+ * schedule), it is simply `every` after the last refresh, stretched by pressure.
  */
-export function nextOddsDue(lastAt: number | null, nextStart: number, pressure: number): number {
+export function nextOddsDue(lastAt: number | null, nextStart: number, pressure: number, every?: number): number {
   if (lastAt === null) return -Infinity;
+  if (every !== undefined) return lastAt + every * pressure;
   if (nextStart - lastAt <= NEAR_WINDOW) return lastAt + NEAR_INTERVAL * pressure;
   // Far phase: wait FAR_INTERVAL, but always wake up when the near window opens.
   return Math.min(lastAt + FAR_INTERVAL * pressure, nextStart - NEAR_WINDOW);
 }
 
 /** How many line refreshes the plan above makes between now and the last start of the day. */
-export function estimateOddsCalls(startsToday: number[], lastAt: number | null, now: number): number {
+export function estimateOddsCalls(startsToday: number[], lastAt: number | null, now: number, every?: number): number {
   const starts = [...startsToday].sort((a, b) => a - b);
   let t = now;
   let last = lastAt;
@@ -58,7 +60,7 @@ export function estimateOddsCalls(startsToday: number[], lastAt: number | null, 
   for (let i = 0; i < 500; i++) {
     const upcoming = starts.find((s) => s > t);
     if (upcoming === undefined) break;
-    const due = Math.max(t, nextOddsDue(last, upcoming, 1));
+    const due = Math.max(t, nextOddsDue(last, upcoming, 1, every));
     if (!starts.some((s) => s > due)) break;
     count++;
     last = due;
@@ -110,9 +112,15 @@ export function decide(plans: SportPlan[], budget: BudgetStatus, now: number, cf
 
   if (budget.allowanceToday < LEAN_ALLOWANCE) return decideLean(plans, budget, now, cfg, events);
 
+  // Hourly schedule (once switched on): every sport with games still to start today refreshes every LINES_INTERVAL_MINUTES.
+  const every = cfg.hourlyLinesFrom !== null && now >= cfg.hourlyLinesFrom ? cfg.linesIntervalMs : undefined;
+  // The hourly schedule's first refresh each day is at LINES_START_HOUR (8 AM by default).
+  const today = zonedParts(now, cfg.timeZone);
+  const linesStart = every === undefined ? now : zonedToEpoch(today.year, today.month, today.day, cfg.linesStartHour, cfg.timeZone);
+  const beforeStart = now < linesStart;
   let estimatedCost = 0;
   for (const p of plans) {
-    estimatedCost += estimateOddsCalls(p.upcomingToday, p.lastOddsAt, now) * oddsCost;
+    estimatedCost += estimateOddsCalls(p.upcomingToday, beforeStart ? null : p.lastOddsAt, Math.max(now, linesStart), every) * oddsCost;
     const ready = p.pendingStarts.filter((s) => s > now - DAY);
     estimatedCost += estimateScoresCalls(ready, p.sport, now, cfg.scoresIntervalMs) * SCORES_CALL_COST;
   }
@@ -123,12 +131,14 @@ export function decide(plans: SportPlan[], budget: BudgetStatus, now: number, cf
   const scores: { sport: string; daysFrom: number }[] = [];
   if (budget.mode === 'halt') return { events, odds, scores, pressure, estimatedCost, budget };
 
-  const linesAllowed = budget.mode === 'normal' && budget.leftToday >= oddsCost;
+  const linesAllowed = budget.mode === 'normal' && budget.leftToday >= oddsCost && !beforeStart;
   for (const p of plans) {
     if (!linesAllowed) break;
     const nextStart = p.upcomingToday.find((s) => s > now);
     if (nextStart === undefined) continue; // no games left today: no line refresh
-    if (now >= nextOddsDue(p.lastOddsAt, nextStart, pressure)) odds.push(p.sport);
+    // On the hourly schedule a refresh from before today's start time doesn't count, so the first one lands at the start hour.
+    const last = every !== undefined && p.lastOddsAt !== null && p.lastOddsAt < linesStart ? null : p.lastOddsAt;
+    if (now >= nextOddsDue(last, nextStart, pressure, every)) odds.push(p.sport);
   }
 
   // Score checks keep running out of the reserve (slowly) so picks always get graded.

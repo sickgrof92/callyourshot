@@ -250,7 +250,18 @@
     data = await api('/admin/competitions');
     $('login').classList.add('hidden'); $('app').classList.remove('hidden');
     const b = data.budget;
-    $('budget').textContent = `Odds API credits left: ${b.remaining} · today's budget ${b.spentToday}/${b.allowanceToday}${b.mode !== 'normal' ? ` · ${b.mode.toUpperCase()}` : ''}`;
+    const L = data.lines;
+    const ago = (iso) => {
+      if (!iso) return 'never';
+      const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+      return m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+    };
+    $('budget').innerHTML = `<div>Odds API credits left: ${b.remaining} · today's budget ${b.spentToday}/${b.allowanceToday}${b.mode !== 'normal' ? ` · ${b.mode.toUpperCase()}` : ''}</div>`
+      + (L.apiKeySet ? '' : '<div class="msg err">ODDS_API_KEY is not set, so no lines are loading.</div>')
+      + `<div style="margin-top:6px">Lines refresh: ${esc(L.schedule)}</div>`
+      + `<table style="margin-top:6px"><tr><th>Sport</th><th>Lines last pulled</th><th>Today's games with lines</th></tr>${L.sports
+        .map((s) => `<tr><td>${esc(s.label)}</td><td>${ago(s.lastPulled)}</td><td>${s.gamesToday ? `${s.withLines} of ${s.gamesToday}` : 'No games today'}</td></tr>`)
+        .join('')}</table>`;
     render();
     loadClaims().catch((err) => { if (err.message !== 'auth') $('claims').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; });
     loadDupes().catch((err) => { if (err.message !== 'auth') $('dupes').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; });

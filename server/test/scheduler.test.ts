@@ -61,10 +61,43 @@ describe('refresh timing', () => {
     expect(nextOddsDue(null, game, 1)).toBe(-Infinity);
   });
 
+  it('refreshes every hour once the hourly schedule is on', () => {
+    const game = et(2026, 11, 21, 19);
+    const morning = et(2026, 11, 21, 6);
+    expect(nextOddsDue(morning, game, 1, HOUR)).toBe(morning + HOUR);
+    expect(nextOddsDue(morning, game, 2, HOUR)).toBe(morning + 2 * HOUR);
+    expect(nextOddsDue(null, game, 1, HOUR)).toBe(-Infinity);
+    // 5am through 6pm, on the hour -> 14
+    expect(estimateOddsCalls([game], null, et(2026, 11, 21, 5), HOUR)).toBe(14);
+  });
+
   it('estimates a single evening game at a handful of refreshes', () => {
     const game = et(2026, 11, 21, 19);
     // 5am, 9am, 1pm, 4pm, then every 30 min to 6:30pm -> 9
     expect(estimateOddsCalls([game], null, et(2026, 11, 21, 5))).toBe(9);
+  });
+});
+
+describe('hourly lines', () => {
+  it('starts on the switch-on date, then refreshes each sport hourly from 8 AM until its last game starts', async () => {
+    const db = testDb();
+    const games = [...saturdaySlate({ y: 2026, m: 11, d: 20 }), ...saturdaySlate()];
+    // Switched on from Saturday: Friday keeps the old schedule.
+    const cfg = testConfig({ hourlyLinesFrom: et(2026, 11, 21, 0) });
+    const start = et(2026, 11, 20, 4);
+    const api = new FakeOddsApi(games, () => start, 100_000);
+    await runTicks(db, cfg, api, start, et(2026, 11, 22, 4), MIN);
+
+    const nba = (from: number, to: number) => api.calls.filter((c) => c.sport === 'basketball_nba' && c.endpoint === 'odds' && c.at >= from && c.at < to).map((c) => c.at);
+    // Saturday: nothing before 8 AM, then on the hour through the last tip-off (10:30 PM).
+    expect(nba(et(2026, 11, 21, 5), et(2026, 11, 21, 8))).toEqual([]);
+    const sat = nba(et(2026, 11, 21, 8), et(2026, 11, 22, 4));
+    expect(sat[0]).toBe(et(2026, 11, 21, 8));
+    expect(sat).toHaveLength(15); // 8 AM ... 10 PM
+    for (let i = 1; i < sat.length; i++) expect(sat[i]! - sat[i - 1]!).toBe(HOUR);
+    // Friday (before the switch-on) still used the near/far schedule, with refreshes 30 minutes apart near game time.
+    const fri = nba(et(2026, 11, 20, 5), et(2026, 11, 21, 4));
+    expect(fri.some((t, i) => i > 0 && t - fri[i - 1]! === 30 * MIN)).toBe(true);
   });
 });
 
