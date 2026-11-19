@@ -528,7 +528,8 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
 
   // Browse contests with filters, a page at a time. Filtering and sorting happen in SQL.
   const browseQuery = z.object({
-    status: z.enum(['open', 'live', 'upcoming', 'mine']).optional(),
+    status: z.enum(['open', 'live', 'upcoming', 'mine', 'ended']).optional(),
+    entered: z.enum(['1', 'true', '0', 'false']).transform((v) => v === '1' || v === 'true').optional(),
     sport: z.string().max(60).optional(),
     prizeType: z.enum(PRIZE_TYPES).optional(),
     sizeMin: z.coerce.number().int().min(0).optional(),

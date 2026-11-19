@@ -3,12 +3,14 @@
 
 import type { ContestQuery, PrizeType } from './api';
 
-export type Show = 'open' | 'live' | 'upcoming' | 'mine';
+export type Show = 'open' | 'live' | 'upcoming' | 'ended';
 export type Starts = 'any' | 'today' | 'tomorrow' | 'week';
 
 export interface Filters {
   sort: 'soonest' | 'popular' | 'ending';
   show: Show;
+  /** Only contests I entered. Combines with any Show choice. */
+  entered: boolean;
   /** '' = any sport; 'any' = only contests open to every sport. */
   sport: string;
   /** Max-players range, as typed ('' = no limit). */
@@ -28,6 +30,7 @@ export const LENGTH_MAX = 30;
 export const DEFAULT_FILTERS: Filters = {
   sort: 'soonest',
   show: 'open',
+  entered: false,
   sport: '',
   sizeMin: '',
   sizeMax: '',
@@ -43,6 +46,12 @@ export function fromSaved(raw: Partial<Filters> & Record<string, unknown>): Filt
   for (const k of Object.keys(DEFAULT_FILTERS) as (keyof Filters)[]) {
     if (raw[k] !== undefined && typeof raw[k] === typeof DEFAULT_FILTERS[k]) (f as Record<string, unknown>)[k] = raw[k];
   }
+  // Older versions had "Entered" as one of the Show choices.
+  if ((raw.show as string | undefined) === 'mine') {
+    f.show = 'open';
+    f.entered = true;
+  }
+  if (!SHOW_OPTIONS.some(([k]) => k === f.show)) f.show = 'open';
   return f;
 }
 
@@ -58,7 +67,7 @@ export const SHOW_OPTIONS: [Show, string][] = [
   ['open', 'All'],
   ['live', 'Live now'],
   ['upcoming', 'Coming up'],
-  ['mine', 'Entered'],
+  ['ended', 'Ended'],
 ];
 export const STARTS_OPTIONS: [Starts, string][] = [
   ['any', 'Any time'],
@@ -81,6 +90,7 @@ function localDay(days: number, now = new Date()): Date {
 
 export function toQuery(f: Filters, now = new Date()): ContestQuery {
   const q: ContestQuery = { sort: f.sort, status: f.show };
+  if (f.entered) q.entered = 1;
   if (f.sport) q.sport = f.sport;
   const lo = num(f.sizeMin);
   const hi = num(f.sizeMax);
@@ -101,6 +111,7 @@ export function toQuery(f: Filters, now = new Date()): ContestQuery {
 export function activeChips(f: Filters, sportLabel: (key: string) => string): { key: keyof Filters; text: string }[] {
   const out: { key: keyof Filters; text: string }[] = [];
   if (f.show !== 'open') out.push({ key: 'show', text: label(SHOW_OPTIONS, f.show) });
+  if (f.entered) out.push({ key: 'entered', text: 'Entered' });
   if (f.sport) out.push({ key: 'sport', text: f.sport === 'any' ? 'All-sport contests' : sportLabel(f.sport) });
   const lo = num(f.sizeMin);
   const hi = num(f.sizeMax);

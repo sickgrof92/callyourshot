@@ -97,7 +97,9 @@ export type PrizeType = 'gift_card' | 'physical';
 
 /** Filters for browsing contests. All optional; the server filters and pages. */
 export interface ContestQuery {
-  status?: 'open' | 'live' | 'upcoming' | 'mine';
+  status?: 'open' | 'live' | 'upcoming' | 'mine' | 'ended';
+  /** Only contests I joined; combines with any status. */
+  entered?: 1;
   sport?: string;
   prizeType?: PrizeType;
   sizeMin?: number;
