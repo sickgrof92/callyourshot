@@ -25,11 +25,12 @@ services:
       # Minutes between score checks after games end: 30 for testing, 5 on a paid plan.
       - key: SCORES_INTERVAL_MINUTES
         value: "30"
-      # From this time on, lines refresh every hour from 8 AM (Eastern) until each
+      # From this time on (Sat Nov 21, 1 PM Eastern), lines refresh every hour (from
+      # 8 AM each day after that) until each
       # sport's last game of the day starts. Needs the $30 Odds API plan (set
       # ODDS_API_MONTHLY_CREDITS to 20000); on the free plan lines stay once a day.
       - key: HOURLY_LINES_FROM
-        value: "2026-11-20T08:00:00-05:00"
+        value: "2026-11-21T13:00:00-05:00"
       # Day of the month your Odds API plan renews.
       - key: ODDS_API_RESET_DAY
         value: "16"
