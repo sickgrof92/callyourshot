@@ -17,6 +17,9 @@ export interface PickTarget {
   quote: LineQuote;
 }
 
+/** How each kind of pick is named on the line under it, e.g. "Moneyline +175 · pays 2.75x". */
+const QUOTE_LABEL: Record<Market, string> = { moneyline: 'Moneyline', spread: 'Spread', total: 'Over/Under' };
+
 /** Default amount for a new pick (any amount from 1 point is allowed). */
 const DEFAULT_POINTS = 10;
 const MAX = 500;
@@ -132,7 +135,8 @@ export function PickSheet({
         </Text>
         <Text style={styles.pick}>{lineLabel(market, selection, quote.point, game.homeTeam, game.awayTeam)}</Text>
         <Text style={styles.meta}>
-          {marketName[market]} · line {signed(quote.price)} · pays {quote.payout.toFixed(2)}x
+          {QUOTE_LABEL[market]} {signed(quote.price)} · pays {quote.payout.toFixed(2)}x{' '}
+          <Text style={styles.metaNote}>(includes points used)</Text>
         </Text>
 
         {tooFew ? (
@@ -182,6 +186,7 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(5,3,20,0.7)' },
   sheet: { backgroundColor: colors.card, padding: space.xl, paddingBottom: 40, borderTopLeftRadius: 24, borderTopRightRadius: 24, gap: space.md, borderTopWidth: 2, borderColor: colors.neon },
   matchup: { color: colors.muted, fontWeight: '700' },
+  metaNote: { color: colors.muted, fontSize: 12, fontWeight: '600' },
   contest: { color: colors.pink, fontWeight: '900', fontSize: 12, letterSpacing: 1 },
   pick: { color: colors.text, fontSize: 26, fontWeight: '900' },
   meta: { color: colors.neon, fontWeight: '700' },
