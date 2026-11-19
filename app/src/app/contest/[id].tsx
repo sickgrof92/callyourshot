@@ -133,7 +133,7 @@ export default function ContestScreen() {
                 <View style={styles.meCard}>
                   <RankBadge rank={data.me.rank} size={48} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.meLabel}>YOUR RANK</Text>
+                    <Text style={styles.meLabel}>{c.status === 'ended' ? 'YOUR FINAL RANK' : 'YOUR RANK'}</Text>
                     <Text style={styles.meScore}>{data.me.score} pts</Text>
                   </View>
                   {c.status !== 'ended' && (
@@ -156,7 +156,7 @@ export default function ContestScreen() {
                 <GameButton title={`Watch video for ${me?.adRewardPoints ?? 10} points`} variant="primary" icon="play-circle" busy={watching} onPress={collect} />
               )}
               {message && <Text style={styles.msg}>{message}</Text>}
-              <Text style={styles.section}>LEADERBOARD</Text>
+              <Text style={styles.section}>{c.status === 'ended' ? 'FINAL STANDINGS' : 'LEADERBOARD'}</Text>
             </View>
           ) : undefined
         }
@@ -173,7 +173,9 @@ export default function ContestScreen() {
             </Pressable>
           );
         }}
-        ListEmptyComponent={c ? <Text style={styles.empty}>No players yet. Join and be first on the board.</Text> : undefined}
+        ListEmptyComponent={
+          c ? <Text style={styles.empty}>{c.status === 'ended' ? 'Nobody played in this contest.' : 'No players yet. Join and be first on the board.'}</Text> : undefined
+        }
         ListFooterComponent={
           c ? <Text style={styles.fine}>Score = your points in this contest, counting points on picks still in play. Ties go to fewest refills used (starting points don't count), then best win %, then most winning picks. Still tied? Everyone tied for first wins the prize (with more than 3 tied, more tiebreakers may be used). Tap a name to see their stats.</Text> : undefined
         }

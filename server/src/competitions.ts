@@ -317,8 +317,10 @@ export function bulkCreate(db: DB, cfg: Config, input: BulkInput, now: number): 
 export const SORTS = ['soonest', 'popular', 'ending'] as const;
 
 export interface ContestFilter {
-  /** open = live or upcoming (the default); mine = ones the player joined that haven't ended. */
-  status?: 'open' | 'live' | 'upcoming' | 'mine';
+  /** open = live or upcoming (the default); mine = ones the player joined that haven't ended; ended = finished ones, newest first. */
+  status?: 'open' | 'live' | 'upcoming' | 'mine' | 'ended';
+  /** Only contests the player joined. Combines with any status (e.g. ended + entered). */
+  entered?: boolean;
   sport?: string;
   /** Contests open to every sport match any sport filter too. */
   prizeType?: PrizeType;
@@ -350,11 +352,14 @@ export function browseContests(db: DB, f: ContestFilter, now: number, userId: st
   } else if (status === 'upcoming') {
     where.push('c.starts_at > ?');
     args.push(now);
+  } else if (status === 'ended') {
+    where.push('c.ends_at <= ?');
+    args.push(now);
   } else {
     where.push('c.ends_at > ?');
     args.push(now);
   }
-  if (status === 'mine') {
+  if (status === 'mine' || f.entered) {
     where.push('EXISTS (SELECT 1 FROM competition_entries me WHERE me.competition_id = c.id AND me.user_id = ?)');
     args.push(userId ?? '');
   }
@@ -402,10 +407,12 @@ export function browseContests(db: DB, f: ContestFilter, now: number, userId: st
     popular: `${entries} DESC, c.starts_at`,
     ending: 'c.ends_at, c.starts_at',
   }[f.sort ?? 'soonest'];
+  // Ended contests: most recently finished first (unless sorted by players).
+  const orderBy = status === 'ended' && f.sort !== 'popular' ? 'c.ends_at DESC, c.name' : order;
   const limit = Math.min(Math.max(f.limit ?? 30, 1), 100);
   const offset = Math.max(f.offset ?? 0, 0);
   const rows = db
-    .prepare(`SELECT c.* FROM competitions c WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ? OFFSET ?`)
+    .prepare(`SELECT c.* FROM competitions c WHERE ${where.join(' AND ')} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
     .all(...args, limit + 1, offset) as unknown as Competition[];
   return { rows: rows.slice(0, limit), more: rows.length > limit };
 }

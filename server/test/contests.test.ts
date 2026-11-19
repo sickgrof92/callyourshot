@@ -182,6 +182,25 @@ describe('contests (players)', () => {
     expect((await join(c, id)).json().error).toBe('ended');
   });
 
+  it('lists ended contests, newest first, and only the ones I entered when asked', async () => {
+    const { app, setClock } = setup(et(2026, 11, 18, 21));
+    const make = async (name: string, day: number) =>
+      (await app.inject({ method: 'POST', url: '/admin/competitions', headers: ADMIN, payload: contest({ name, startsAt: iso(et(2026, 11, day, 0)), endsAt: iso(et(2026, 11, day + 1, 0)) }) })).json().id as string;
+    const older = await make('Older', 19);
+    const newer = await make('Newer', 20);
+    const later = await make('Still to come', 25);
+    const a = await signUp(app, 'alice');
+    await app.inject({ method: 'POST', url: `/competitions/${older}/join`, headers: auth(a) });
+    await app.inject({ method: 'POST', url: `/competitions/${later}/join`, headers: auth(a) });
+    setClock(et(2026, 11, 22, 12));
+    const ids = async (qs: string) =>
+      ((await app.inject({ method: 'GET', url: `/competitions?${qs}`, headers: auth(a) })).json().competitions as { id: string }[]).map((c) => c.id);
+    expect(await ids('status=ended')).toEqual([newer, older]);
+    expect(await ids('status=ended&entered=1')).toEqual([older]);
+    expect(await ids('entered=1')).toEqual([later]);
+    expect(await ids('status=open')).toEqual([later]);
+  });
+
   it('makes a week-long and a daily all-sport test contest, once each', () => {
     const db = testDb();
     const cfg = testConfig();

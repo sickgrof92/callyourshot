@@ -78,7 +78,21 @@ export function FilterSheet({
         </View>
         <ScrollView contentContainerStyle={{ gap: space.lg, paddingBottom: space.lg }}>
           <Group title="SORT BY" options={SORT_OPTIONS} value={draft.sort} onPick={set('sort')} />
-          <Group title="SHOW" options={SHOW_OPTIONS} value={draft.show} onPick={set('show')} />
+          <View style={{ gap: space.sm }}>
+            <Group title="SHOW" options={SHOW_OPTIONS} value={draft.show} onPick={set('show')} />
+            <Pressable
+              onPress={() => {
+                tap();
+                setDraft((d) => ({ ...d, entered: !d.entered }));
+              }}
+              style={styles.toggleRow}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: draft.entered }}
+            >
+              <Ionicons name={draft.entered ? 'checkbox' : 'square-outline'} size={24} color={draft.entered ? colors.neon : colors.muted} />
+              <Text style={[styles.toggleText, draft.entered && { color: colors.text }]}>Only contests I entered</Text>
+            </Pressable>
+          </View>
           <Group title="SPORT" options={sportOptions} value={draft.sport} onPick={set('sport')} />
           <Group title="STARTS" options={STARTS_OPTIONS} value={draft.starts} onPick={set('starts')} />
           <View style={{ gap: space.sm }}>
@@ -180,6 +194,8 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: colors.text, fontSize: 20, fontWeight: '900' },
   reset: { color: colors.neon, fontWeight: '800' },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 4 },
+  toggleText: { color: colors.muted, fontWeight: '800', fontSize: 15 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   value: { color: colors.neon, fontWeight: '900' },
   scale: { color: colors.muted, fontSize: 12, fontWeight: '700' },
