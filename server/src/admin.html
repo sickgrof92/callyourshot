@@ -86,6 +86,9 @@
   .tile.hot b { color: var(--accent); }
   .tile span { color: var(--muted); font-size: 14px; }
 
+  .filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .filters label { margin-top: 0; }
+  .filters select, .filters input { padding: 9px 10px; font-size: 15px; }
   .seg { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 4px; flex-wrap: wrap; }
   .seg button { background: none; box-shadow: none; color: var(--muted); padding: 8px 14px; font-size: 14px; border-radius: 9px; }
   .seg button:active { transform: none; box-shadow: none; }
@@ -153,16 +156,38 @@
 
     <section class="panel" data-panel="contests">
       <div class="pagehead">
-        <div><h1>Contests</h1><p class="muted">Tap Standings on a live or ended contest to see every player and their picks.</p></div>
+        <div><h1>Contests</h1><p class="muted">Tap Standings on a live or finished contest to see every player and their picks. Sort and filter with the boxes below.</p></div>
         <div class="seg" id="contestSeg">
           <button data-sub="live">Live (<span id="cLive">0</span>)</button>
           <button data-sub="upcoming">Upcoming (<span id="cUpcoming">0</span>)</button>
-          <button data-sub="ended">Ended (<span id="cEnded">0</span>)</button>
+          <button data-sub="ended">Finished (<span id="cEnded">0</span>)</button>
+          <button data-sub="all">All (<span id="cAll">0</span>)</button>
         </div>
       </div>
-      <div id="live" class="grid" data-list="live"></div>
-      <div id="upcoming" class="grid" data-list="upcoming"></div>
-      <div id="ended" class="grid" data-list="ended"></div>
+      <div class="filters">
+        <div><label for="fSort">Sort by</label>
+          <select id="fSort">
+            <option value="start">Start date (soonest first)</option>
+            <option value="startDesc">Start date (newest first)</option>
+            <option value="end">End date (ending soonest)</option>
+            <option value="endDesc">End date (ended most recently)</option>
+            <option value="entriesDesc">Most players</option>
+            <option value="entries">Fewest players</option>
+            <option value="fullDesc">Fullest (% of max entries)</option>
+            <option value="lengthDesc">Longest</option>
+            <option value="length">Shortest</option>
+            <option value="valueDesc">Biggest prize value</option>
+            <option value="name">Name (A to Z)</option>
+          </select></div>
+        <div><label for="fKind">Length</label>
+          <select id="fKind"><option value="">All lengths</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
+        <div><label for="fSport">Sport</label><select id="fSport"><option value="">Any sport</option><option value="-">All-sports contests</option></select></div>
+        <div><label for="fPtype">Prize type</label>
+          <select id="fPtype"><option value="">Any prize</option><option value="gift_card">Gift card</option><option value="physical">Physical prize</option></select></div>
+        <div><label for="fText">Search</label><input id="fText" placeholder="Name or prize" autocomplete="off"></div>
+      </div>
+      <div class="muted" id="fSummary" style="margin:-4px 0 12px"></div>
+      <div id="contestList" class="grid"></div>
     </section>
 
     <section class="panel" data-panel="create">
@@ -303,7 +328,7 @@
   function showSub(s) {
     contestSub = s; pref('cys-admin-sub', s);
     document.querySelectorAll('#contestSeg button').forEach((b) => b.classList.toggle('on', b.dataset.sub === s));
-    document.querySelectorAll('[data-list]').forEach((el) => el.classList.toggle('hidden', el.dataset.list !== s));
+    if (data) renderContests();
   }
   $('contestSeg').addEventListener('click', (e) => { const b = e.target.closest('button[data-sub]'); if (b) showSub(b.dataset.sub); });
   showSub(contestSub);
@@ -494,7 +519,7 @@
     if (c.status === 'ended' && !c.winner) actions.push(`<button class="small" data-act="finalize" data-id="${c.id}">Pick winner now</button>`);
     if (c.status !== 'upcoming') actions.push(`<button class="small ghost" data-act="emergencyDelete" data-id="${c.id}">Emergency delete</button>`);
     return `<div class="card contest">
-      <span class="badge ${c.status}">${c.status} · ${c.kind}</span>
+      <span class="badge ${c.status}">${c.status === 'ended' ? 'finished' : c.status} · ${c.kind}</span>
       <h3>${esc(c.name)}</h3>
       <div class="prize">🏆 ${esc(c.prize)}</div>
       <div class="muted">${c.prizeType === 'physical' ? 'Physical prize' : 'Gift card'} · ${c.sportLabel ? esc(c.sportLabel) + ' only' : 'All sports'}</div>
@@ -511,14 +536,57 @@
 
   function render() {
     for (const s of ['upcoming', 'live', 'ended']) {
-      const list = data.competitions.filter((c) => c.status === s);
-      counts[s] = list.length;
-      $(`c${s[0].toUpperCase()}${s.slice(1)}`).textContent = list.length;
-      if (s !== 'ended') list.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-      $(s).innerHTML = list.length ? list.map(card).join('') : `<div class="muted">No ${s} contests.</div>`;
+      counts[s] = data.competitions.filter((c) => c.status === s).length;
+      $(`c${s[0].toUpperCase()}${s.slice(1)}`).textContent = counts[s];
     }
+    $('cAll').textContent = data.competitions.length;
+    if ($('fSport').options.length <= 2) $('fSport').insertAdjacentHTML('beforeend', data.sports.map((x) => `<option value="${esc(x.key)}">${esc(x.label)} only</option>`).join(''));
+    renderContests();
     updateCounts();
   }
+
+  // ---- Sorting and filtering contests ----
+  const FILTERS = ['fSort', 'fKind', 'fSport', 'fPtype', 'fText'];
+  try { const saved = JSON.parse(localStorage.getItem('cys-admin-filters') || '{}'); for (const id of FILTERS) if (saved[id] !== undefined) $(id).value = saved[id]; } catch {}
+  if (!$('fSort').value) $('fSort').value = 'start';
+  const lengthMs = (c) => Date.parse(c.endsAt) - Date.parse(c.startsAt);
+  const SORTS = {
+    start: (a, b) => a.startsAt.localeCompare(b.startsAt),
+    startDesc: (a, b) => b.startsAt.localeCompare(a.startsAt),
+    end: (a, b) => a.endsAt.localeCompare(b.endsAt),
+    endDesc: (a, b) => b.endsAt.localeCompare(a.endsAt),
+    entriesDesc: (a, b) => b.entries - a.entries,
+    entries: (a, b) => a.entries - b.entries,
+    fullDesc: (a, b) => b.entries / b.maxEntries - a.entries / a.maxEntries,
+    lengthDesc: (a, b) => lengthMs(b) - lengthMs(a),
+    length: (a, b) => lengthMs(a) - lengthMs(b),
+    valueDesc: (a, b) => (b.prizeValue || 0) - (a.prizeValue || 0),
+    name: (a, b) => a.name.localeCompare(b.name),
+  };
+  function renderContests() {
+    if (!data) return;
+    const f = Object.fromEntries(FILTERS.map((id) => [id, $(id).value]));
+    try { localStorage.setItem('cys-admin-filters', JSON.stringify(f)); } catch {}
+    const q = f.fText.trim().toLowerCase();
+    const inStatus = data.competitions.filter((c) => contestSub === 'all' || c.status === contestSub);
+    const list = inStatus.filter((c) => (!f.fKind || c.kind === f.fKind)
+      && (!f.fSport || (f.fSport === '-' ? !c.sport : c.sport === f.fSport))
+      && (!f.fPtype || (c.prizeType || 'gift_card') === f.fPtype)
+      && (!q || `${c.name} ${c.prize}`.toLowerCase().includes(q)));
+    list.sort((a, b) => (SORTS[f.fSort] || SORTS.start)(a, b) || a.startsAt.localeCompare(b.startsAt));
+    const filtered = f.fKind || f.fSport || f.fPtype || q;
+    $('fSummary').innerHTML = filtered
+      ? `Showing ${list.length} of ${inStatus.length}. <button class="link" id="fClear">Clear filters</button>`
+      : '';
+    const what = { live: 'live', upcoming: 'upcoming', ended: 'finished', all: '' }[contestSub];
+    $('contestList').innerHTML = list.length ? list.map(card).join('') : `<div class="muted">No ${what ? what + ' ' : ''}contests${filtered ? ' match these filters' : ''}.</div>`;
+  }
+  for (const id of FILTERS) $(id).addEventListener('input', renderContests);
+  document.addEventListener('click', (e) => {
+    if (e.target.id !== 'fClear') return;
+    for (const id of ['fKind', 'fSport', 'fPtype', 'fText']) $(id).value = '';
+    renderContests();
+  });
 
   // ---- Winners and prize claims ----
   const CLAIM_LABEL = {
