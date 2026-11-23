@@ -12,21 +12,6 @@ export type Provider = 'apple' | 'google';
 
 export class SignInCancelled extends Error {}
 
-// Test mode only: one phone can hold several test players (separate accounts),
-// so a tester can enter a contest more than once and check how winners are
-// picked. Player 1 is the phone's original test account.
-const SLOT_KEY = 'cys.stubSlot';
-export const MAX_TEST_PLAYERS = 5;
-
-export async function getTestPlayer(): Promise<number> {
-  const n = Number(await SecureStore.getItemAsync(SLOT_KEY).catch(() => null));
-  return Number.isInteger(n) && n >= 1 && n <= MAX_TEST_PLAYERS ? n : 1;
-}
-
-export async function setTestPlayer(n: number): Promise<void> {
-  await SecureStore.setItemAsync(SLOT_KEY, String(n));
-}
-
 async function stubToken(provider: Provider): Promise<string> {
   const key = 'cys.stubDevice';
   let id = await SecureStore.getItemAsync(key);
@@ -34,8 +19,7 @@ async function stubToken(provider: Provider): Promise<string> {
     id = Array.from({ length: 24 }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]).join('');
     await SecureStore.setItemAsync(key, id);
   }
-  const slot = await getTestPlayer();
-  return `stub-${provider}-${id}${slot > 1 ? `-p${slot}` : ''}`;
+  return `stub-${provider}-${id}`;
 }
 
 async function appleToken(): Promise<{ idToken: string; email: string | null }> {
