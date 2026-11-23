@@ -17,6 +17,7 @@ import {
   contestStandings,
   createCompetition,
   deleteCompetition,
+  deletePreview,
   entryCount,
   finalizeCompetition,
   getCompetition,
@@ -793,8 +794,20 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
   app.delete('/admin/competitions/:id', async (req, reply) => {
     requireAdmin(req);
     const { id } = z.object({ id: z.string() }).parse(req.params);
-    const res = deleteCompetition(db, id, clock());
+    // A contest that has started needs its exact name typed (emergency delete).
+    const { confirmName } = z.object({ confirmName: z.string().max(200).optional() }).parse(req.body ?? {});
+    const res = deleteCompetition(db, id, clock(), confirmName);
+    if (res.ok) req.log.warn({ contestId: id }, 'admin deleted contest');
     return res.ok ? { deleted: true } : reply.code(400).send({ error: res.error });
+  });
+
+  // What an emergency delete would remove, so the admin page can show it first.
+  app.get('/admin/competitions/:id/delete-preview', async (req, reply) => {
+    requireAdmin(req);
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const c = getCompetition(db, id);
+    if (!c) return reply.code(404).send({ error: 'Contest not found.' });
+    return { name: c.name, ...deletePreview(db, id) };
   });
 
   app.post('/admin/competitions/:id/finalize', async (req, reply) => {

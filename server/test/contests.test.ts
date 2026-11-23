@@ -131,6 +131,56 @@ describe('contests (admin)', () => {
     expect((await app.inject({ method: 'DELETE', url: `/admin/competitions/${id}`, headers: ADMIN })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: `/competitions/${id}` })).statusCode).toBe(404);
   });
+
+  it('emergency-deletes a live contest with its entries, picks, and points only when its exact name is typed', async () => {
+    const { app, db, setClock, loadLines } = setup(et(2026, 11, 20, 21));
+    const id = (await app.inject({ method: 'POST', url: '/admin/competitions', headers: ADMIN, payload: contest() })).json().id as string;
+    const other = (await app.inject({ method: 'POST', url: '/admin/competitions', headers: ADMIN, payload: contest({ name: 'Keep me' }) })).json().id as string;
+    const a = await signUp(app, 'alice');
+    for (const cid of [id, other]) await app.inject({ method: 'POST', url: `/competitions/${cid}/join`, headers: auth(a) });
+
+    setClock(et(2026, 11, 21, 12));
+    await loadLines();
+    await watchAd(app, a, 'points', id);
+    await watchAd(app, a, 'points', other);
+    const ad = await watchAd(app, a, 'pick');
+    const placed = await app.inject({ method: 'POST', url: '/picks', headers: auth(a), payload: { competitionId: id, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad } });
+    expect(placed.statusCode).toBe(200);
+
+    const preview = await app.inject({ method: 'GET', url: `/admin/competitions/${id}/delete-preview`, headers: ADMIN });
+    expect(preview.json()).toEqual({ name: 'Daily: Sat, Nov 21', entries: 1, picks: 1, claims: 0, paidClaims: 0 });
+
+    const del = (payload?: object) => app.inject({ method: 'DELETE', url: `/admin/competitions/${id}`, headers: ADMIN, payload });
+    expect((await app.inject({ method: 'DELETE', url: `/admin/competitions/${id}`, payload: { confirmName: 'Daily: Sat, Nov 21' } })).statusCode).toBe(403);
+    expect((await del()).json().error).toMatch(/Emergency delete/);
+    expect((await del({ confirmName: 'Daily' })).json().error).toMatch(/doesn't match/);
+
+    const done = await del({ confirmName: '  Daily: Sat, Nov 21 ' });
+    expect(done.json()).toEqual({ deleted: true });
+    expect((await app.inject({ method: 'GET', url: `/competitions/${id}` })).statusCode).toBe(404);
+    for (const t of ['picks', 'ledger', 'ad_sessions', 'prize_claims', 'competition_entries']) {
+      expect((db.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE competition_id = ?`).get(id) as { n: number }).n).toBe(0);
+    }
+    // The other contest and the player are untouched.
+    const list = (await app.inject({ method: 'GET', url: '/competitions', headers: auth(a) })).json().competitions;
+    expect(list.map((x: { id: string }) => x.id)).toEqual([other]);
+    expect(list[0]).toMatchObject({ joined: true });
+    expect((await app.inject({ method: 'GET', url: '/picks', headers: auth(a) })).statusCode).toBe(200);
+  });
+
+  it("won't delete a contest whose prize has been paid", async () => {
+    const { app, db, setClock } = setup(et(2026, 11, 20, 21));
+    const id = (await app.inject({ method: 'POST', url: '/admin/competitions', headers: ADMIN, payload: contest() })).json().id as string;
+    const a = await signUp(app, 'alice');
+    await app.inject({ method: 'POST', url: `/competitions/${id}/join`, headers: auth(a) });
+    const uid = (db.prepare('SELECT user_id FROM competition_entries WHERE competition_id = ?').get(id) as { user_id: string }).user_id;
+    db.prepare("INSERT INTO prize_claims (competition_id, user_id, status, created_at, updated_at) VALUES (?, ?, 'paid', 0, 0)").run(id, uid);
+    setClock(et(2026, 11, 23, 12));
+    const res = await app.inject({ method: 'DELETE', url: `/admin/competitions/${id}`, headers: ADMIN, payload: { confirmName: 'Daily: Sat, Nov 21' } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/already been paid/);
+    expect((await app.inject({ method: 'GET', url: `/competitions/${id}` })).statusCode).toBe(200);
+  });
 });
 
 describe('contests (players)', () => {
