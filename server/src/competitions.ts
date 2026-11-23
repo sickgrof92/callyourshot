@@ -124,13 +124,40 @@ export function updateCompetition(db: DB, id: string, input: CompetitionInput, n
   return { ok: true, value: getCompetition(db, id)! };
 }
 
-/** Delete a contest. Only allowed before it starts. */
-export function deleteCompetition(db: DB, id: string, now: number): Result<null> {
+/** What deleting a contest would remove, shown on the admin page before an emergency delete. */
+export function deletePreview(db: DB, id: string) {
+  const count = (sql: string) => (db.prepare(sql).get(id) as { n: number }).n;
+  return {
+    entries: entryCount(db, id),
+    picks: count('SELECT COUNT(*) AS n FROM picks WHERE competition_id = ?'),
+    claims: count('SELECT COUNT(*) AS n FROM prize_claims WHERE competition_id = ?'),
+    paidClaims: count("SELECT COUNT(*) AS n FROM prize_claims WHERE competition_id = ? AND status = 'paid'"),
+  };
+}
+
+/**
+ * Delete a contest and everything in it: entries, picks (and parlay games),
+ * points history, points videos, and unpaid prize claims.
+ *
+ * Before it starts this is a normal delete. Once it has started it's an
+ * emergency delete: the admin must type the contest's exact name, and it's
+ * refused if a prize has already been paid (those records are kept for taxes).
+ */
+export function deleteCompetition(db: DB, id: string, now: number, confirmName?: string): Result<null> {
   const c = getCompetition(db, id);
   if (!c) return { ok: false, error: 'Contest not found.' };
-  if (now >= c.starts_at) return { ok: false, error: "This contest has started, so it can't be deleted." };
+  if (now >= c.starts_at) {
+    if (confirmName === undefined) return { ok: false, error: "This contest has started. Use Emergency delete and type the contest's name to confirm." };
+    if (confirmName.trim() !== c.name.trim()) return { ok: false, error: "The name you typed doesn't match this contest's name, so nothing was deleted." };
+    if (deletePreview(db, id).paidClaims > 0) {
+      return { ok: false, error: "A prize for this contest has already been paid, so it can't be deleted. Its records are kept for taxes." };
+    }
+  }
   tx(db, () => {
-    db.prepare('DELETE FROM competition_entries WHERE competition_id = ?').run(id);
+    // parlay_legs rows go with their picks (ON DELETE CASCADE).
+    for (const t of ['picks', 'ledger', 'ad_sessions', 'prize_claims', 'competition_entries']) {
+      db.prepare(`DELETE FROM ${t} WHERE competition_id = ?`).run(id);
+    }
     db.prepare('DELETE FROM competitions WHERE id = ?').run(id);
   });
   return { ok: true, value: null };

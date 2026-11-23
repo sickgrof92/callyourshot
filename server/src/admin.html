@@ -27,6 +27,7 @@
   button.ghost { background: var(--card2); color: var(--text); box-shadow: 0 4px 0 #111133; }
   button.danger { background: var(--red); color: #fff; box-shadow: 0 4px 0 var(--red-dark); }
   button.small { padding: 8px 12px; font-size: 14px; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
   button.link { background: none; box-shadow: none; padding: 0; color: var(--cyan); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
   .kinds button { flex: 1; }
   .kinds button.on { background: var(--cyan); color: #00222a; box-shadow: 0 4px 0 #0a8fa0; }
@@ -327,6 +328,7 @@
     actions.push(`<button class="small ghost" data-act="copy" data-id="${c.id}">Copy ${c.kind === 'daily' ? 'to next day' : '7 days later'}</button>`);
     if (c.status !== 'upcoming') actions.push(`<button class="small ghost" data-act="standings" data-id="${c.id}">Standings</button>`);
     if (c.status === 'ended' && !c.winner) actions.push(`<button class="small" data-act="finalize" data-id="${c.id}">Pick winner now</button>`);
+    if (c.status !== 'upcoming') actions.push(`<button class="small ghost" data-act="emergencyDelete" data-id="${c.id}">Emergency delete</button>`);
     return `<div class="card contest">
       <span class="badge ${c.status}">${c.status} · ${c.kind}</span>
       <h3>${esc(c.name)}</h3>
@@ -337,6 +339,7 @@
       <div class="muted">${c.entries} / ${c.maxEntries} entered · ${when(c.startsAt)} → ${when(c.endsAt)}</div>
       ${c.winner ? `<div class="prize" style="margin-top:6px">Winner: ${esc(c.winner)}</div>` : ''}
       <div id="st-${c.id}"></div>
+      <div id="del-${c.id}"></div>
       <div id="msg-${c.id}"></div>
       <div class="actions">${actions.join('')}</div>
     </div>`;
@@ -510,7 +513,35 @@
         show($('formMsg'), 'Copied. Check the name and dates, then tap Create contest.', true);
       } else if (b.dataset.act === 'delete') {
         if (!confirm(`Delete "${c.name}"?`)) return;
-        await api(`/admin/competitions/${c.id}`, { method: 'DELETE' }); await load();
+        await api(`/admin/competitions/${c.id}`, { method: 'DELETE', body: {} }); await load();
+      } else if (b.dataset.act === 'emergencyDelete') {
+        // Step 1: show what would be removed and ask for the contest's exact name.
+        const r = await api(`/admin/competitions/${c.id}/delete-preview`);
+        const n = (x, one, many) => `${x} ${x === 1 ? one : many}`;
+        $(`del-${c.id}`).innerHTML = r.paidClaims
+          ? `<div class="msg err">A prize for this contest has already been paid, so it can't be deleted. Its records are kept for taxes.</div>`
+          : `<div class="card" style="border:2px solid var(--red);margin-top:10px">
+              <h3 style="margin:0 0 6px">⚠ Emergency delete</h3>
+              <div>This permanently removes <b>${esc(c.name)}</b> for everyone, including ${n(r.entries, 'player entry', 'player entries')}, ${n(r.picks, 'pick', 'picks')}, the standings, and ${n(r.claims, 'prize claim', 'prize claims')}. Players won't get a message about it. This can't be undone.</div>
+              <div class="muted" style="margin:10px 0 6px">To confirm, type the contest's name exactly: <b>${esc(c.name)}</b></div>
+              <input id="delName-${c.id}" autocomplete="off" spellcheck="false">
+              <div class="actions" style="margin-top:10px"><button class="small danger" data-act="emergencyConfirm" data-id="${c.id}" disabled>Delete forever</button><button class="small ghost" data-act="emergencyCancel" data-id="${c.id}">Cancel</button></div>
+            </div>`;
+        const input = $(`delName-${c.id}`);
+        if (input) {
+          const go = document.querySelector(`button[data-act="emergencyConfirm"][data-id="${c.id}"]`);
+          input.addEventListener('input', () => { go.disabled = input.value.trim() !== c.name.trim(); });
+          input.focus();
+        }
+      } else if (b.dataset.act === 'emergencyCancel') {
+        $(`del-${c.id}`).innerHTML = '';
+      } else if (b.dataset.act === 'emergencyConfirm') {
+        // Step 2: one last yes/no, then the server checks the name again.
+        const typed = $(`delName-${c.id}`).value;
+        if (!confirm(`Last check: permanently delete "${c.name}" and all of its entries, picks, and standings?`)) return;
+        await api(`/admin/competitions/${c.id}`, { method: 'DELETE', body: { confirmName: typed } });
+        await load();
+        alert(`Deleted "${c.name}".`);
       } else if (b.dataset.act === 'finalize') {
         const r = await api(`/admin/competitions/${c.id}/finalize`, { method: 'POST' });
         show(msg, r.winner ? `Winner: ${r.winner}. They claim the prize in the app; see Winners above.` : 'No entrants scored, so there is no winner.', true); await load();
