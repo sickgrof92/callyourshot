@@ -8,7 +8,7 @@ import { api, API_URL, ApiError } from '../lib/api';
 import { tap, warn } from '../lib/haptics';
 import { openPrivacy, openRules } from '../lib/links';
 import { NOT_ELIGIBLE, type Country } from '../lib/regions';
-import { getIdentityToken, getTestPlayer, MAX_TEST_PLAYERS, providersFor, setTestPlayer, SignInCancelled, type Provider } from '../lib/identity';
+import { getIdentityToken, providersFor, SignInCancelled, type Provider } from '../lib/identity';
 import { useSession } from '../lib/session';
 import { colors, glow, space } from '../lib/theme';
 
@@ -63,15 +63,6 @@ const unreachable = `Couldn't reach the server at ${API_URL}. It may be waking u
 export default function Welcome() {
   const { signedIn } = useSession();
   const [mode, setMode] = useState<'stub' | 'live' | null>(null);
-  // Test mode only: which of this phone's test players to sign in as.
-  const [testPlayer, setTestPlayerState] = useState(1);
-  useEffect(() => {
-    void getTestPlayer().then(setTestPlayerState);
-  }, []);
-  const pickTestPlayer = (n: number) => {
-    setTestPlayerState(n);
-    void setTestPlayer(n);
-  };
   const [busy, setBusy] = useState<Provider | 'profile' | null>(null);
   const [error, setError] = useState<string | null>(null);
   // After Apple/Google, a new player fills in their details.
@@ -176,25 +167,7 @@ export default function Welcome() {
               </GameButton>
             ))}
             {mode === 'stub' && (
-              <>
-                <Text style={styles.note}>Test mode: no real Apple or Google sign-in happens. Your account is tied to this phone.</Text>
-                <Text style={styles.label}>TEST PLAYER (test mode only)</Text>
-                <View style={styles.testRow}>
-                  {Array.from({ length: MAX_TEST_PLAYERS }, (_, i) => i + 1).map((n) => (
-                    <Pressable
-                      key={n}
-                      onPress={() => pickTestPlayer(n)}
-                      style={[styles.testChip, testPlayer === n && styles.testChipOn]}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected: testPlayer === n }}
-                      accessibilityLabel={`Test player ${n}`}
-                    >
-                      <Text style={[styles.testChipText, testPlayer === n && styles.testChipTextOn]}>{n}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <Text style={styles.note}>Each number is a separate account on this phone, so you can enter the same contest as several players. Sign out from the menu to switch. New players need their own name, email and phone.</Text>
-              </>
+              <Text style={styles.note}>Test mode: no real Apple or Google sign-in happens. Your account is tied to this phone.</Text>
             )}
           </>
         ) : (
@@ -285,11 +258,6 @@ export default function Welcome() {
 }
 
 const styles = StyleSheet.create({
-  testRow: { flexDirection: 'row', gap: space.sm },
-  testChip: { flex: 1, alignItems: 'center', borderWidth: 2, borderColor: colors.border, borderRadius: 12, paddingVertical: 8 },
-  testChipOn: { borderColor: colors.neon, backgroundColor: colors.neon },
-  testChipText: { color: colors.muted, fontWeight: '900', fontSize: 16 },
-  testChipTextOn: { color: '#022A30' },
   wrap: { flex: 1, backgroundColor: colors.bg },
   inner: { flexGrow: 1, justifyContent: 'center', padding: space.xl, gap: space.md },
   logo: { color: colors.accent, fontSize: 38, fontWeight: '900', letterSpacing: 1, textAlign: 'center' },
