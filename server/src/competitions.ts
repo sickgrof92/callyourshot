@@ -2,7 +2,8 @@
 // each with a fixed prize, an entry cap and start/end times.
 //
 // Everything happens inside a contest. Each player who joins starts that
-// contest with its own 10 starting points, its own 5 refills per day, its own picks and its own
+// contest with its own 10 starting points (credited automatically on joining,
+// no video needed), its own 5 refills per day, its own picks and its own
 // balance; nothing carries between contests. A player can join as many
 // contests as they like. Standings rank entrants by their points in the
 // contest: balance plus points still in play on ungraded picks.
@@ -16,7 +17,9 @@
 import { randomUUID } from 'node:crypto';
 import type { Config } from './config.ts';
 import { openClaim } from './claims.ts';
+import { STARTING_POINTS } from './config.ts';
 import { tx, type DB } from './db.ts';
+import { postLedger } from './points.ts';
 import { DAY, HOUR, sportsDay, zonedParts, zonedToEpoch } from './time.ts';
 
 export const KINDS = ['daily', 'weekly', 'monthly'] as const;
@@ -169,7 +172,11 @@ export function entryCount(db: DB, id: string): number {
 
 export type JoinResult = { ok: true } | { ok: false; error: 'not_found' | 'ended' | 'full' | 'already_joined' };
 
-/** Join a contest. Free; allowed until it ends, while there's room. */
+/**
+ * Join a contest. Free; allowed until it ends, while there's room. Joining
+ * credits the starting points right away, in the same transaction, so there
+ * is no video to watch first and they never count as a refill.
+ */
 export function joinCompetition(db: DB, id: string, userId: string, now: number): JoinResult {
   return tx(db, (): JoinResult => {
     const c = getCompetition(db, id);
@@ -180,7 +187,42 @@ export function joinCompetition(db: DB, id: string, userId: string, now: number)
     }
     if (entryCount(db, id) >= c.max_entries) return { ok: false, error: 'full' };
     db.prepare('INSERT INTO competition_entries (competition_id, user_id, joined_at) VALUES (?, ?, ?)').run(id, userId, now);
+    creditStartingPoints(db, id, userId, now);
     return { ok: true };
+  });
+}
+
+/** Whether this player has had the free starting points in this contest. */
+export function hasJoinBonus(db: DB, competitionId: string, userId: string): boolean {
+  return !!db.prepare("SELECT 1 FROM ledger WHERE competition_id = ? AND user_id = ? AND kind = 'join_bonus'").get(competitionId, userId);
+}
+
+/** Must run inside a transaction. Credits the starting points once per player per contest. */
+function creditStartingPoints(db: DB, competitionId: string, userId: string, now: number): boolean {
+  if (hasJoinBonus(db, competitionId, userId)) return false;
+  postLedger(db, { userId, competitionId, kind: 'join_bonus', amount: STARTING_POINTS, ref: null, at: now });
+  return true;
+}
+
+/**
+ * Players who joined a contest that hasn't ended before joining credited the
+ * starting points, and who never watched the old starting points video,
+ * get them now. Anyone who already got them (from that video or on joining)
+ * is left alone, so this is safe to run at every startup.
+ */
+export function backfillStartingPoints(db: DB, now: number): number {
+  return tx(db, () => {
+    const rows = db
+      .prepare(
+        `SELECT e.competition_id AS cid, e.user_id AS uid FROM competition_entries e JOIN competitions c ON c.id = e.competition_id
+         WHERE c.ends_at > ?
+           AND NOT EXISTS (SELECT 1 FROM ledger l WHERE l.competition_id = e.competition_id AND l.user_id = e.user_id AND l.kind = 'join_bonus')
+           AND NOT EXISTS (SELECT 1 FROM ad_sessions a WHERE a.competition_id = e.competition_id AND a.user_id = e.user_id
+                             AND a.purpose = 'points' AND a.rewarded_at IS NOT NULL)`,
+      )
+      .all(now) as { cid: string; uid: string }[];
+    for (const r of rows) creditStartingPoints(db, r.cid, r.uid, now);
+    return rows.length;
   });
 }
 
@@ -209,8 +251,12 @@ export function contestStandings(db: DB, c: Competition, limit = 500): ContestSt
       `SELECT e.user_id AS userId, u.display_name AS displayName,
               ROUND(e.balance + COALESCE((SELECT SUM(p.stake) FROM picks p
                                     WHERE p.competition_id = e.competition_id AND p.user_id = e.user_id AND p.status = 'pending'), 0), 2) AS score,
+              -- Every points video is a refill, except the first one of a player who joined
+              -- before starting points were credited on joining (that video was their start).
               MAX(0, (SELECT COUNT(*) FROM ad_sessions a
-               WHERE a.competition_id = e.competition_id AND a.user_id = e.user_id AND a.purpose = 'points' AND a.rewarded_at IS NOT NULL) - 1) AS refills,
+               WHERE a.competition_id = e.competition_id AND a.user_id = e.user_id AND a.purpose = 'points' AND a.rewarded_at IS NOT NULL)
+               - (CASE WHEN EXISTS (SELECT 1 FROM ledger l WHERE l.competition_id = e.competition_id AND l.user_id = e.user_id AND l.kind = 'join_bonus')
+                       THEN 0 ELSE 1 END)) AS refills,
               (SELECT COUNT(*) FROM picks p WHERE p.competition_id = e.competition_id AND p.user_id = e.user_id AND p.status = 'won') AS wins,
               (SELECT COUNT(*) FROM picks p WHERE p.competition_id = e.competition_id AND p.user_id = e.user_id AND p.status = 'lost') AS losses
        FROM competition_entries e

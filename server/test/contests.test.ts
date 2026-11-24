@@ -1,6 +1,19 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { adEligibility } from '../src/ads.ts';
 import { buildApp } from '../src/app.ts';
-import { ensureTestContests, finalizeEndedContests } from '../src/competitions.ts';
+import {
+  backfillStartingPoints,
+  contestStandings,
+  createCompetition,
+  ensureTestContests,
+  finalizeEndedContests,
+  getCompetition,
+} from '../src/competitions.ts';
+import { openDb, type DB } from '../src/db.ts';
+import { playerStats } from '../src/profiles.ts';
 import { gradeEvent } from '../src/grading.ts';
 import { applyScores, ingestOdds } from '../src/lines.ts';
 import { et, FakeOddsApi, testConfig, testDb } from './helpers.ts';
@@ -141,8 +154,6 @@ describe('contests (admin)', () => {
 
     setClock(et(2026, 11, 21, 12));
     await loadLines();
-    await watchAd(app, a, 'points', id);
-    await watchAd(app, a, 'points', other);
     const ad = await watchAd(app, a, 'pick');
     const placed = await app.inject({ method: 'POST', url: '/picks', headers: auth(a), payload: { competitionId: id, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad } });
     expect(placed.statusCode).toBe(200);
@@ -199,12 +210,10 @@ describe('contests (players)', () => {
     expect((await join(c)).json().error).toBe('full');
 
     const list = (await app.inject({ method: 'GET', url: '/competitions', headers: auth(a) })).json().competitions;
-    expect(list.find((x: { id: string }) => x.id === id)).toMatchObject({ joined: true, entries: 2, status: 'upcoming', mine: { balance: 0 } });
+    expect(list.find((x: { id: string }) => x.id === id)).toMatchObject({ joined: true, entries: 2, status: 'upcoming', mine: { balance: 10 } });
 
     setClock(et(2026, 11, 21, 12));
     await loadLines();
-    await watchAd(app, a, 'points', id);
-    await watchAd(app, b, 'points', id);
     const ad = await watchAd(app, a, 'pick');
     const placed = await app.inject({ method: 'POST', url: '/picks', headers: auth(a), payload: { competitionId: id, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad } });
     expect(placed.statusCode).toBe(200);
@@ -235,7 +244,7 @@ describe('contests (players)', () => {
     const pl = (await app.inject({ method: 'GET', url: `/admin/competitions/${id}/players/${aliceId}`, headers: ADMIN })).json();
     expect(pl.player).toMatchObject({ displayName: 'alice' });
     expect(pl.entry).toMatchObject({ balance: 16.66 });
-    expect(pl.entry.pointsVideos).toHaveLength(1);
+    expect(pl.entry.pointsVideos).toHaveLength(0); // the starting points came with joining
     expect(pl.picks).toHaveLength(1);
     expect(pl.picks[0]).toMatchObject({ market: 'moneyline', selection: 'home', points: 10, status: 'won', payout: 16.66 });
 
@@ -284,5 +293,91 @@ describe('contests (players)', () => {
     const next = ensureTestContests(db, cfg, later);
     expect(next).toHaveLength(1);
     expect(next[0]).toMatchObject({ kind: 'daily', starts_at: later + 60_000, ends_at: et(2026, 11, 20, 5) });
+  });
+});
+
+describe('starting points on joining', () => {
+  const window = { name: 'W', kind: 'weekly' as const, prize: 'p', prizeDetails: '', maxEntries: 9 };
+  /** A contest entry made the old way: joined at 0, optionally with the old starting points video. */
+  function legacyEntry(db: DB, cid: string, uid: string, o: { video?: boolean } = {}) {
+    db.prepare('INSERT OR IGNORE INTO users (id, display_name, token_hash, created_at) VALUES (?, ?, ?, 0)').run(uid, uid, `h${uid}`);
+    db.prepare('INSERT INTO competition_entries (competition_id, user_id, joined_at, balance) VALUES (?, ?, 0, ?)').run(cid, uid, o.video ? 10 : 0);
+    if (o.video) {
+      db.prepare("INSERT INTO ad_sessions (id, user_id, purpose, competition_id, created_at, rewarded_at) VALUES (?, ?, 'points', ?, 0, ?)").run(`s-${uid}-${cid}`, uid, cid, et(2026, 11, 21, 8));
+      db.prepare("INSERT INTO ledger (user_id, competition_id, kind, amount, created_at) VALUES (?, ?, 'ad_reward', 10, 0)").run(uid, cid);
+    }
+  }
+
+  it('credits existing players who never got their starting points, once, and leaves everyone else alone', () => {
+    const db = testDb();
+    const cfg = testConfig();
+    const now = et(2026, 11, 21, 12);
+    const mk = (startsAt: number, endsAt: number) => {
+      const r = createCompetition(db, { ...window, startsAt, endsAt }, et(2026, 11, 1, 0));
+      if (!r.ok) throw new Error(r.error);
+      return r.value.id;
+    };
+    const live = mk(et(2026, 11, 21, 0), et(2026, 11, 28, 0));
+    const ended = mk(et(2026, 11, 10, 0), et(2026, 11, 17, 0));
+    legacyEntry(db, live, 'never'); // joined, never watched the old video
+    legacyEntry(db, live, 'watched', { video: true }); // got them from the old video
+    legacyEntry(db, ended, 'never');
+
+    expect(backfillStartingPoints(db, now)).toBe(1);
+    expect(backfillStartingPoints(db, now)).toBe(0); // safe to run at every startup
+    const bal = (cid: string, uid: string) => (db.prepare('SELECT balance FROM competition_entries WHERE competition_id = ? AND user_id = ?').get(cid, uid) as { balance: number }).balance;
+    expect(bal(live, 'never')).toBe(10);
+    expect(bal(live, 'watched')).toBe(10);
+    expect(bal(ended, 'never')).toBe(0); // finished contests are not changed
+    expect(adEligibility(db, cfg, 'never', live, now)).toMatchObject({ hasStartingPoints: true, pointsAdsToday: 0, canEarnPoints: false });
+
+    // The old starting points video still isn't a refill: 5 refills are left today, and it doesn't count in the tiebreaker.
+    db.prepare('UPDATE competition_entries SET balance = 0').run();
+    expect(adEligibility(db, cfg, 'watched', live, now)).toMatchObject({ hasStartingPoints: true, pointsAdsToday: 0, canEarnPoints: true });
+    expect(contestStandings(db, getCompetition(db, live)!).find((r) => r.userId === 'watched')).toMatchObject({ refills: 0 });
+    expect(playerStats(db, 'watched')).toMatchObject({ reloads: 0 });
+  });
+
+  it('counts every points video as a refill for players who got their starting points on joining', async () => {
+    const db = testDb();
+    const cfg = testConfig();
+    const now = et(2026, 11, 21, 12);
+    const app = buildApp({ db, cfg, clock: () => now });
+    const r = createCompetition(db, { ...window, startsAt: et(2026, 11, 21, 0), endsAt: et(2026, 11, 28, 0) }, et(2026, 11, 1, 0));
+    if (!r.ok) throw new Error(r.error);
+    const token = await signUpPlayer(app, 'newbie');
+    expect((await app.inject({ method: 'POST', url: `/competitions/${r.value.id}/join`, headers: auth(token) })).statusCode).toBe(200);
+    const uid = (await app.inject({ method: 'GET', url: '/me', headers: auth(token) })).json().id as string;
+    expect(db.prepare("SELECT kind, amount FROM ledger WHERE user_id = ?").all(uid)).toEqual([{ kind: 'join_bonus', amount: 10 }]);
+    // A backfill later doesn't pay again.
+    expect(backfillStartingPoints(db, now)).toBe(0);
+
+    db.prepare('UPDATE competition_entries SET balance = 0').run();
+    const start = await app.inject({ method: 'POST', url: '/ads/sessions', headers: auth(token), payload: { purpose: 'points', competitionId: r.value.id } });
+    await app.inject({ method: 'POST', url: `/ads/sessions/${start.json().sessionId}/stub-complete`, headers: auth(token) });
+    expect(adEligibility(db, cfg, uid, r.value.id, now)).toMatchObject({ balance: 10, pointsAdsToday: 1 });
+    expect(contestStandings(db, getCompetition(db, r.value.id)!)[0]).toMatchObject({ refills: 1 });
+    expect(playerStats(db, 'newbie')).toMatchObject({ reloads: 1 });
+  });
+
+  it('upgrades an existing database so it can record starting points, keeping every ledger row', () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'cys-')), 'db.sqlite');
+    let db = openDb(path);
+    // Put the ledger back the way it was before join_bonus existed.
+    db.exec(`DROP TABLE ledger; CREATE TABLE ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES users(id), competition_id TEXT NOT NULL REFERENCES competitions(id),
+      kind TEXT NOT NULL CHECK (kind IN ('ad_reward','pick_stake','pick_won','pick_push','pick_lost','pick_void')),
+      amount INTEGER NOT NULL, ref TEXT, created_at INTEGER NOT NULL)`);
+    const r = createCompetition(db, { ...window, startsAt: et(2026, 11, 21, 0), endsAt: et(2026, 11, 28, 0) }, et(2026, 11, 1, 0));
+    if (!r.ok) throw new Error(r.error);
+    legacyEntry(db, r.value.id, 'old', { video: true });
+    db.close();
+
+    db = openDb(path);
+    expect(db.prepare('SELECT kind, amount FROM ledger').all()).toEqual([{ kind: 'ad_reward', amount: 10 }]);
+    legacyEntry(db, r.value.id, 'new');
+    expect(backfillStartingPoints(db, et(2026, 11, 21, 12))).toBe(1);
+    expect(db.prepare("SELECT user_id FROM ledger WHERE kind = 'join_bonus'").all()).toEqual([{ user_id: 'new' }]);
+    db.close();
   });
 });

@@ -146,6 +146,9 @@ export function loadConfig(): Config {
   };
 }
 
+/** Points every player gets, once, when joining a contest. No video needed, and never a refill. */
+export const STARTING_POINTS = 10;
+
 /** Points granted by a points video. Fixed on purpose: it never depends on ad revenue. */
 export const AD_REWARD_POINTS = 10;
 

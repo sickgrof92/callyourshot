@@ -35,7 +35,7 @@ function clearChip(f: Filters, key: keyof Filters): Filters {
 }
 
 export default function Contests() {
-  const { token } = useSession();
+  const { token, me } = useSession();
   const [list, setList] = useState<Contest[]>([]);
   const [toClaim, setToClaim] = useState<Contest[]>([]);
   const [sports, setSports] = useState<{ key: string; label: string }[]>([]);
@@ -114,7 +114,7 @@ export default function Contests() {
     try {
       await api.joinContest(token, c.id);
       contests.setActive(c.id);
-      setParty({ title: "YOU'RE IN!", subtitle: `${c.name} · now playing`, color: colors.neon });
+      setParty({ title: "YOU'RE IN!", subtitle: `+${me?.startingPoints ?? 10} free points to start · ${c.name}`, color: colors.neon });
     } catch (err) {
       warn();
       setError(err instanceof ApiError ? JOIN_ERRORS[err.code] ?? 'Something went wrong.' : 'Could not reach the server.');

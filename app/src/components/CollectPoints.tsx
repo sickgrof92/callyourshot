@@ -1,5 +1,6 @@
-// The pop-up on a contest page when the player can collect points there:
-// their first 10 points right after joining, or a refill when they're out.
+// The pop-up on a contest page when the player can collect points there: a
+// refill when they're out. (Starting points now come free on joining; the
+// "first" wording only shows for a player whose server predates that.)
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ReactNode } from 'react';

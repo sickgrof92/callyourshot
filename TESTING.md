@@ -103,8 +103,8 @@ The message shows the address the app is trying. If it says `http://localhost:80
 First, create a contest or two on the admin page (`https://your-url.onrender.com/admin`, password is your `ADMIN_TOKEN`). "7-day contests, one starting each day" sets up a week of them at once. Contests have to be created before they start, so the first ones open tomorrow; for a quick test, make one that starts a few minutes from now.
 
 1. Tap **Continue with Apple** or **Continue with Google**. In test mode no real sign-in happens; your account is tied to the phone. Fill in a display name, email, phone, state or province and date of birth, and tick the agreement.
-2. On **Contests**, tap **Join free** on a live contest. Each contest starts you at 0. The strip at the top of Games and Points shows which contest you're playing; tap another to switch.
-3. On the **Points** tab, tap **Watch video for 10 points**. In test mode a fake 5-second video plays instead of a real ad.
+2. On **Contests**, tap **Join free** on a live contest. You get 10 starting points in that contest right away, no video needed. The strip at the top of Games and Points shows which contest you're playing; tap another to switch.
+3. The **Points** tab shows your 10 points and 5 of 5 refills left today. Refill videos only show up once you're out of points (in test mode a fake 5-second video plays instead of a real ad).
 4. Go to **Games**, pick a sport, and tap a line. Tap **Watch ad to confirm pick**, let the ad finish, then tap **Confirm pick**.
 5. Once you're at 0 points with no picks in play in that contest, Points lets you watch for 10 more (up to 5 times a day in each contest).
 6. After a game starts, **My Picks** shows a red **FORFEIT THIS PICK** button on that pick. Forfeiting counts it as a loss, so you can get back to 0 and watch for new points sooner.

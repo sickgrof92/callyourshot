@@ -10,15 +10,15 @@ type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const STEPS: { icon: IconName; color: string; title: string; body: string }[] = [
   { icon: 'trophy', color: colors.accent, title: 'Join a contest', body: 'Pick the contest length of your choice, and join as many contests as you’d like. All players start with only the 10 points awarded at the beginning of each contest.' },
-  { icon: 'flash', color: colors.neon, title: 'Get points', body: 'In the Points tab, watch a short video to be awarded your 10 starting points for the contest you are playing. Your starting points are not a refill, and never count against you.' },
+  { icon: 'flash', color: colors.neon, title: 'Get points', body: 'You get 10 free starting points as soon as you join a contest, with no video to watch. They are not a refill, and never count against you. When you run out, the Points tab lets you watch a short video for 10 more.' },
   { icon: 'american-football', color: colors.pink, title: 'Make picks', body: 'Search through the available games to make your picks on spreads, winners, or over/unders. After choosing your pick, choose how many points to put on it (any amount from 1 point up to your balance), then watch a short ad to be able to confirm it. You can also combine picks from different games into a parlay or a round robin. Winning picks reward points based on how many points you put on the pick and its line. Losing picks lose all the points put on them. You can change a pick any time before its game starts by watching a short ad.' },
   { icon: 'podium', color: colors.purple, title: 'Climb the board', body: 'The player with the most points at the end of the contest wins the prize(s) listed for that contest.' },
 ];
 
 const FAQ: [string, string][] = [
   ['Does it cost anything?', 'No. Contests are free to enter, and there is nothing to buy. Points have no cash value and can’t be bought, sold or transferred.'],
-  ['Can I join a contest before it starts?', 'Yes, and you can start playing right away. As soon as you join, you can collect your 10 starting points and make picks, even before the contest opens. Only games that start after the contest opens and finish before it ends can be picked in it.'],
-  ['What happens when I run out of points?', 'When you have less than 1 point and no picks waiting to be graded in a contest, you can watch a video for 10 more. You get 5 refills per day in each contest you join. Your 10 starting points when you join a contest are not a refill.'],
+  ['Can I join a contest before it starts?', 'Yes, and you can start playing right away. As soon as you join, you get your 10 starting points and can make picks, even before the contest opens. Only games that start after the contest opens and finish before it ends can be picked in it.'],
+  ['What happens when I run out of points?', 'When you have less than 1 point and no picks waiting to be graded in a contest, you can watch a video for 10 more. You get 5 refills per day in each contest you join. Your 10 free starting points when you join a contest are not a refill.'],
   ['Why can’t I refill right now?', 'Refills are only for when you’re under 1 point. If you have 1 point or more, use it: picks can be as small as 1 point. If you have picks in play, wait for them to be graded, or forfeit one after its game starts to run out sooner.'],
   ['Can I change a pick?', 'Yes. Any time before the game starts, open My Picks, tap Change this pick, choose a new line on that game, and watch a short ad. Changing a pick isn’t a forfeit: the points from your old pick go toward the new one.'],
   ['How many points can I put on a pick?', 'Any whole number from 1 point up to the points you have in that contest.'],

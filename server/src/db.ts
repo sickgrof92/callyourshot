@@ -6,7 +6,8 @@ export type DB = DatabaseSync;
 
 // Ledger kinds are an allow-list enforced by the database. There is deliberately
 // no kind for buying, transferring or cashing out points: those features must not exist.
-export const LEDGER_KINDS = ['ad_reward', 'pick_stake', 'pick_won', 'pick_push', 'pick_lost', 'pick_void'] as const;
+// join_bonus is the free starting points every player gets once when joining a contest.
+export const LEDGER_KINDS = ['join_bonus', 'ad_reward', 'pick_stake', 'pick_won', 'pick_push', 'pick_lost', 'pick_void'] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
 /**
@@ -31,6 +32,16 @@ const PICKS_TABLE = `CREATE TABLE IF NOT EXISTS picks (
   forfeited_at INTEGER,
   group_id    TEXT,
   UNIQUE (competition_id, user_id, event_id, market)
+);`;
+
+const LEDGER_TABLE = `CREATE TABLE IF NOT EXISTS ledger (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id        TEXT NOT NULL REFERENCES users(id),
+  competition_id TEXT NOT NULL REFERENCES competitions(id),
+  kind           TEXT NOT NULL CHECK (kind IN (${LEDGER_KINDS.map((k) => `'${k}'`).join(',')})),
+  amount         INTEGER NOT NULL,
+  ref            TEXT,
+  created_at     INTEGER NOT NULL
 );`;
 
 const SCHEMA = `
@@ -69,15 +80,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_phone ON users(phone);
 
 -- Every change to a contest balance is a ledger row. Points only exist
 -- inside a contest: each entry starts at 0, and nothing moves between contests.
-CREATE TABLE IF NOT EXISTS ledger (
-  id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id        TEXT NOT NULL REFERENCES users(id),
-  competition_id TEXT NOT NULL REFERENCES competitions(id),
-  kind           TEXT NOT NULL CHECK (kind IN (${LEDGER_KINDS.map((k) => `'${k}'`).join(',')})),
-  amount         INTEGER NOT NULL,
-  ref            TEXT,
-  created_at     INTEGER NOT NULL
-);
+${LEDGER_TABLE}
 CREATE INDEX IF NOT EXISTS ledger_entry ON ledger(competition_id, user_id);
 
 CREATE TABLE IF NOT EXISTS events (
@@ -211,7 +214,8 @@ CREATE TABLE IF NOT EXISTS deletion_requests (
 );
 
 -- Joining is free. One row per player per contest, holding that contest's
--- points balance. Everyone starts at 0.
+-- points balance. Each entry starts at 0 and is credited its starting points
+-- (one join_bonus ledger row) in the same transaction that creates it.
 CREATE TABLE IF NOT EXISTS competition_entries (
   competition_id TEXT NOT NULL REFERENCES competitions(id),
   user_id        TEXT NOT NULL REFERENCES users(id),
@@ -279,6 +283,19 @@ function migrate(db: DB): void {
       db.exec(PICKS_TABLE);
       db.exec(`INSERT INTO picks (${cols}) SELECT ${cols} FROM picks_old`);
       db.exec('DROP TABLE picks_old');
+      db.exec('COMMIT');
+      db.exec('PRAGMA foreign_keys = ON');
+    }
+    const ledgerSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'ledger'").get() as { sql: string }).sql;
+    if (LEDGER_KINDS.some((k) => !ledgerSql.includes(`'${k}'`))) {
+      // A new ledger kind needs the table's CHECK rebuilt; every row is kept as is.
+      const cols = colsOf('ledger').join(', ');
+      db.exec('PRAGMA foreign_keys = OFF');
+      db.exec('BEGIN');
+      db.exec('ALTER TABLE ledger RENAME TO ledger_old');
+      db.exec(LEDGER_TABLE);
+      db.exec(`INSERT INTO ledger (${cols}) SELECT ${cols} FROM ledger_old`);
+      db.exec('DROP TABLE ledger_old');
       db.exec('COMMIT');
       db.exec('PRAGMA foreign_keys = ON');
     }

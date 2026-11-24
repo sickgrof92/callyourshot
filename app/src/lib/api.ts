@@ -32,6 +32,8 @@ export interface Me {
   maxPickPoints: number;
   pointsAdsPerDay: number;
   adRewardPoints: number;
+  /** Free points credited on joining a contest (not a refill). Older servers leave it out. */
+  startingPoints?: number;
 }
 
 /** A player's own state inside one contest. */

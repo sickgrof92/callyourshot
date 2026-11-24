@@ -1,11 +1,13 @@
 // Rewarded video ads.
 //
 // Every ad view has a purpose, chosen when the app starts the session:
-//  - points:  grants AD_REWARD_POINTS points in one contest, only while the
-//             player is out of points there (exactly 0 and no picks still in
-//             play in that contest). The first one in a contest is the
-//             player's starting points and is not a refill; after that, at
-//             most POINTS_ADS_PER_DAY refills a day per contest.
+//  - points:  a refill: grants AD_REWARD_POINTS points in one contest, only
+//             while the player is out of points there (under the smallest
+//             pick and no picks still in play in that contest), at most
+//             POINTS_ADS_PER_DAY a day per contest. The starting points come
+//             free on joining (see joinCompetition) and are not a refill.
+//             For players who joined before that, the first points video in
+//             the contest was their starting points and still isn't counted.
 //  - pick:    grants no points. A completed pick ad unlocks exactly one pick.
 //  - forfeit: grants no points. Lets the player give up one pending pick as a
 //             loss, so they can get back to 0 and earn points sooner.
@@ -25,6 +27,7 @@
 
 import { createVerify, randomUUID } from 'node:crypto';
 import { AD_REWARD_POINTS, type Config } from './config.ts';
+import { hasJoinBonus } from './competitions.ts';
 import { tx, type DB } from './db.ts';
 import { entryBalance, postLedger } from './points.ts';
 import { sportsDay } from './time.ts';
@@ -39,7 +42,7 @@ const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 export interface AdEligibility {
   /** Refills used today in this contest (the starting points don't count). */
   pointsAdsToday: number;
-  /** Whether the player has collected their starting points in this contest yet. */
+  /** Whether the player has their starting points in this contest (true from joining on). */
   hasStartingPoints: boolean;
   pointsAdsPerDay: number;
   /** Out of points in this contest (exactly 0, nothing in play) with refills left today. */
@@ -64,10 +67,15 @@ export function adEligibility(db: DB, cfg: Config, userId: string, competitionId
       "SELECT COUNT(*) AS n FROM ad_sessions WHERE user_id = ? AND competition_id = ? AND purpose = 'points' AND rewarded_at >= ? AND rewarded_at < ?",
     )
     .get(userId, competitionId, day.start, day.end) as { n: number };
-  // The first points video in a contest is the starting points, not a refill.
-  const first = db
-    .prepare("SELECT MIN(rewarded_at) AS t FROM ad_sessions WHERE user_id = ? AND competition_id = ? AND purpose = 'points' AND rewarded_at IS NOT NULL")
-    .get(userId, competitionId) as { t: number | null };
+  // Starting points come free on joining. Players who joined before that got them
+  // from their first points video in the contest, which isn't a refill.
+  const joinBonus = hasJoinBonus(db, competitionId, userId);
+  const first = joinBonus
+    ? { t: null }
+    : (db
+        .prepare("SELECT MIN(rewarded_at) AS t FROM ad_sessions WHERE user_id = ? AND competition_id = ? AND purpose = 'points' AND rewarded_at IS NOT NULL")
+        .get(userId, competitionId) as { t: number | null });
+  const hasStartingPoints = joinBonus || first.t !== null;
   const refillsToday = used.n - (first.t !== null && first.t >= day.start && first.t < day.end ? 1 : 0);
   const balance = entryBalance(db, competitionId, userId);
   const pending = db
@@ -75,10 +83,10 @@ export function adEligibility(db: DB, cfg: Config, userId: string, competitionId
     .get(userId, competitionId) as { n: number };
   return {
     pointsAdsToday: refillsToday,
-    hasStartingPoints: first.t !== null,
+    hasStartingPoints,
     pointsAdsPerDay: cfg.pointsAdsPerDay,
     // Under the smallest pick (e.g. 0.67 left over) counts as out of points.
-    canEarnPoints: joined && live && balance < cfg.minPickPoints && pending.n === 0 && (first.t === null || refillsToday < cfg.pointsAdsPerDay),
+    canEarnPoints: joined && live && balance < cfg.minPickPoints && pending.n === 0 && (!hasStartingPoints || refillsToday < cfg.pointsAdsPerDay),
     balance,
     pendingPicks: pending.n,
     joined,
