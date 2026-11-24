@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance, type TextInputInstance, type TextInputKeyPressEvent } from 'react-native';
 import { GameButton } from '../components/GameButton';
 import { RegionPicker } from '../components/RegionPicker';
 import { api, API_URL, ApiError } from '../lib/api';
@@ -77,6 +77,67 @@ export default function Welcome() {
   const [bDay, setBDay] = useState('');
   const [bYear, setBYear] = useState('');
   const birthDate = isoDate(bYear, bMonth, bDay);
+
+  // Keep the date of birth boxes above the keyboard. Android draws edge to edge, so the window no
+  // longer shrinks for the keyboard, and on iPad the screen can sit in a sheet; padding the scroll
+  // content by the keyboard's height and scrolling the boxes into view works the same everywhere.
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const monthRef = useRef<TextInputInstance>(null);
+  const dayRef = useRef<TextInputInstance>(null);
+  const yearRef = useRef<TextInputInstance>(null);
+  const dobY = useRef(0);
+  const dobFocused = useRef(false);
+  const [kbHeight, setKbHeight] = useState(0);
+
+  const showDob = () => {
+    if (!dobFocused.current) return;
+    // Put the "Date of birth" label near the top of what's visible, with the boxes under it.
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: Math.max(0, dobY.current - 60), animated: true }));
+  };
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKbHeight(e.endCoordinates.height);
+      setTimeout(showDob, 50);
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
+  const onDobFocus = () => {
+    dobFocused.current = true;
+    if (Keyboard.isVisible()) showDob();
+  };
+  const onDobBlur = () => {
+    dobFocused.current = false;
+  };
+
+  // Jump month -> day -> year as each box fills. A month of 2-9 or a day of 4-9 can't have a
+  // second digit, so those get a leading zero and move on right away.
+  const onMonth = (t: string) => {
+    let v = t.replace(/\D/g, '').slice(0, 2);
+    if (v.length === 1 && v > '1') v = `0${v}`;
+    setBMonth(v);
+    if (v.length === 2 && v !== bMonth) dayRef.current?.focus();
+  };
+  const onDay = (t: string) => {
+    let v = t.replace(/\D/g, '').slice(0, 2);
+    if (v.length === 1 && v > '3') v = `0${v}`;
+    setBDay(v);
+    if (v.length === 2 && v !== bDay) yearRef.current?.focus();
+  };
+  const onYear = (t: string) => {
+    const v = t.replace(/\D/g, '').slice(0, 4);
+    setBYear(v);
+    if (v.length === 4 && v !== bYear) Keyboard.dismiss();
+  };
+  // Backspace in an empty box goes back to the one before it.
+  const backTo = (value: string, prev: RefObject<TextInputInstance | null>) => (e: TextInputKeyPressEvent) => {
+    if (e.nativeEvent.key === 'Backspace' && value === '') prev.current?.focus();
+  };
   const blocked = !!region && NOT_ELIGIBLE.has(`${country}:${region}`);
 
   useEffect(() => {
@@ -140,8 +201,8 @@ export default function Welcome() {
   const canFinish = name.trim().length >= 3 && email.includes('@') && phone.replace(/\D/g, '').length >= 10 && !!region && !blocked && !!birthDate && agreed;
 
   return (
-    <KeyboardAvoidingView style={styles.wrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
+    <View style={styles.wrap}>
+      <ScrollView ref={scrollRef} contentContainerStyle={[styles.inner, { paddingBottom: space.xl + kbHeight }]} keyboardShouldPersistTaps="handled">
         <Text style={[styles.logo, glow(colors.accent, 20)]}>CALL YOUR SHOT</Text>
         {!pending ? (
           <>
@@ -217,11 +278,13 @@ export default function Welcome() {
               }}
             />
             {blocked && <Text style={styles.error}>Sorry, contests are not open to residents of Quebec.</Text>}
-            <Text style={styles.label}>Date of birth</Text>
+            <Text style={styles.label} onLayout={(e) => (dobY.current = e.nativeEvent.layout.y)}>
+              Date of birth
+            </Text>
             <View style={styles.dobRow}>
-              <TextInput value={bMonth} onChangeText={(t) => setBMonth(t.replace(/\D/g, ''))} keyboardType="number-pad" maxLength={2} placeholder="MM" placeholderTextColor={colors.muted} style={[styles.input, styles.dob]} accessibilityLabel="Birth month" />
-              <TextInput value={bDay} onChangeText={(t) => setBDay(t.replace(/\D/g, ''))} keyboardType="number-pad" maxLength={2} placeholder="DD" placeholderTextColor={colors.muted} style={[styles.input, styles.dob]} accessibilityLabel="Birth day" />
-              <TextInput value={bYear} onChangeText={(t) => setBYear(t.replace(/\D/g, ''))} keyboardType="number-pad" maxLength={4} placeholder="YYYY" placeholderTextColor={colors.muted} style={[styles.input, styles.dob, { flex: 1.5 }]} accessibilityLabel="Birth year" />
+              <TextInput ref={monthRef} value={bMonth} onChangeText={onMonth} onFocus={onDobFocus} onBlur={onDobBlur} keyboardType="number-pad" maxLength={2} placeholder="MM" placeholderTextColor={colors.muted} style={[styles.input, styles.dob]} accessibilityLabel="Birth month" />
+              <TextInput ref={dayRef} value={bDay} onChangeText={onDay} onFocus={onDobFocus} onBlur={onDobBlur} onKeyPress={backTo(bDay, monthRef)} keyboardType="number-pad" maxLength={2} placeholder="DD" placeholderTextColor={colors.muted} style={[styles.input, styles.dob]} accessibilityLabel="Birth day" />
+              <TextInput ref={yearRef} value={bYear} onChangeText={onYear} onFocus={onDobFocus} onBlur={onDobBlur} onKeyPress={backTo(bYear, dayRef)} keyboardType="number-pad" maxLength={4} placeholder="YYYY" placeholderTextColor={colors.muted} style={[styles.input, styles.dob, { flex: 1.5 }]} accessibilityLabel="Birth year" />
             </View>
             <Text style={styles.hint}>Use your real birthday. Winners verify it with ID before getting a prize.</Text>
             <Pressable
@@ -253,7 +316,7 @@ export default function Welcome() {
           <Text style={styles.link} onPress={openRules}>Official Rules</Text> · <Text style={styles.link} onPress={openPrivacy}>Privacy Policy</Text>
           {'\n'}Free to play. No purchase necessary. Open to residents of the US and Canada (excluding Quebec). Points have no cash value and can't be bought, sold or transferred.</Text>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
