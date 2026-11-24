@@ -1,5 +1,5 @@
 import { buildApp } from './app.ts';
-import { ensureTestContests } from './competitions.ts';
+import { backfillStartingPoints, ensureTestContests } from './competitions.ts';
 import { loadConfig } from './config.ts';
 import { openDb } from './db.ts';
 import { postgresStore, restoreSnapshot, startSnapshots, type Snapshotter } from './persist.ts';
@@ -31,6 +31,9 @@ if (store) {
     log: { info: (m) => app.log.info(m), error: (err, m) => app.log.error(err, m) },
   });
 }
+// Players who joined before starting points were credited on joining (and never watched the old video) get them now.
+const backfilled = backfillStartingPoints(db, Date.now());
+if (backfilled) app.log.info(`Credited starting points to ${backfilled} existing contest entries.`);
 
 
 if (cfg.schedulerEnabled) {

@@ -55,7 +55,7 @@ export default function ContestScreen() {
       await api.joinContest(token, id);
       await contests.refresh();
       contests.setActive(id);
-      setParty({ title: "YOU'RE IN!", subtitle: data?.competition.name, color: colors.neon });
+      setParty({ title: "YOU'RE IN!", subtitle: `+${me?.startingPoints ?? 10} free points to start · ${data?.competition.name ?? ''}`, color: colors.neon });
     } catch (err) {
       warn();
       setMessage(err instanceof ApiError && err.code === 'full' ? 'This contest just filled up.' : 'Could not join. Try again.');

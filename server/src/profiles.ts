@@ -57,9 +57,12 @@ export function playerStats(db: DB, displayName: string): PlayerStats | null {
     winPct: wins + losses > 0 ? wins / (wins + losses) : null,
     longestWinStreak: best,
     currentWinStreak: run,
-    // Each contest's first points video is its starting points, not a reload.
+    // Every points video is a reload, except the first one in a contest joined before
+    // starting points were credited on joining (that video was the starting points).
     reloads: n(
-      "SELECT COUNT(*) - COUNT(DISTINCT competition_id) AS n FROM ad_sessions WHERE user_id = ? AND purpose = 'points' AND rewarded_at IS NOT NULL",
+      `SELECT COUNT(*) - COUNT(DISTINCT CASE WHEN NOT EXISTS (SELECT 1 FROM ledger l WHERE l.user_id = a.user_id AND l.competition_id = a.competition_id AND l.kind = 'join_bonus')
+                                         THEN a.competition_id END) AS n
+       FROM ad_sessions a WHERE a.user_id = ? AND a.purpose = 'points' AND a.rewarded_at IS NOT NULL`,
     ),
     contestsJoined: n('SELECT COUNT(*) AS n FROM competition_entries WHERE user_id = ?'),
     contestsWon: n('SELECT COUNT(*) AS n FROM prize_claims WHERE user_id = ?'),

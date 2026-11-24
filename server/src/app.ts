@@ -32,7 +32,7 @@ import {
   PRIZE_TYPES,
   SORTS,
 } from './competitions.ts';
-import { AD_REWARD_POINTS, SPORT_LABELS, type Config } from './config.ts';
+import { AD_REWARD_POINTS, SPORT_LABELS, STARTING_POINTS, type Config } from './config.ts';
 import type { DB } from './db.ts';
 import type { LineRow } from './lines.ts';
 import { changePick, forfeitPick, listPicks, placePick } from './picks.ts';
@@ -250,6 +250,7 @@ export function buildApp({ db, cfg, clock = Date.now, logger = false, fetchImpl,
       maxPickPoints: cfg.maxPickPoints,
       pointsAdsPerDay: cfg.pointsAdsPerDay,
       adRewardPoints: AD_REWARD_POINTS,
+      startingPoints: STARTING_POINTS,
     };
   });
 

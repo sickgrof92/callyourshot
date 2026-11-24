@@ -72,22 +72,21 @@ async function pick(app: App, token: string, payload: Record<string, unknown>) {
 }
 
 describe('end-to-end', () => {
-  it('starts each contest at 0, needs an ad for every pick, refills only when out, locks at start, grades and ranks', async () => {
+  it('starts each contest with 10 free points, needs an ad for every pick, refills only when out, locks at start, grades and ranks', async () => {
     const t0 = et(2026, 11, 21, 12);
     const { app, db, cid, loadLines, setClock } = setup(t0);
     await loadLines();
     const a = await signUp(app, 'alice', cid);
     const b = await signUp(app, 'bob', cid);
 
-    // Everyone starts the contest at 0 and watches a video for their first 10 points.
-    expect(await mine(app, a, cid)).toMatchObject({ balance: 0, canEarnPoints: true, pointsAdsToday: 0, pointsAdsPerDay: 5 });
+    // Joining credits the 10 starting points right away, with no video, and they are not a refill.
+    expect(await mine(app, a, cid)).toMatchObject({ balance: 10, canEarnPoints: false, pointsAdsToday: 0, pointsAdsPerDay: 5, hasStartingPoints: true });
     expect((await watchAd(app, a, 'points')).start.json().error).toBe('contest_required');
-    await watchAd(app, a, 'points', cid);
     // Can't watch for more points while you still have points.
     expect((await watchAd(app, a, 'points', cid)).start.json().error).toBe('not_out_of_points');
-    await watchAd(app, b, 'points', cid);
-    // The starting points are not a refill.
-    expect(await mine(app, a, cid)).toMatchObject({ balance: 10, canEarnPoints: false, pointsAdsToday: 0, hasStartingPoints: true });
+    // Joining again doesn't pay twice.
+    expect((await app.inject({ method: 'POST', url: `/competitions/${cid}/join`, headers: auth(a) })).json().error).toBe('already_joined');
+    expect((await mine(app, a, cid)).balance).toBe(10);
 
     const lines = (await app.inject({ method: 'GET', url: '/lines?sport=basketball_nba' })).json();
     expect(lines.events[0].lines.spread.home).toEqual({ point: -3.5, price: -110, payout: 1.91 });
@@ -162,10 +161,9 @@ describe('end-to-end', () => {
     expect((await watchAd(app, a, 'points', oid)).start.json().error).toBe('not_joined');
     await app.inject({ method: 'POST', url: `/competitions/${oid}/join`, headers: auth(a) });
 
-    await watchAd(app, a, 'points', cid);
-    // Being out of points elsewhere is what counts: the new contest still starts at 0.
-    expect(await mine(app, a, oid)).toMatchObject({ balance: 0, canEarnPoints: true, pointsAdsToday: 0 });
-    await watchAd(app, a, 'points', oid);
+    // Each contest has its own 10 starting points from joining.
+    expect(await mine(app, a, cid)).toMatchObject({ balance: 10, pointsAdsToday: 0 });
+    expect(await mine(app, a, oid)).toMatchObject({ balance: 10, pointsAdsToday: 0 });
 
     // The same game can be picked once in each contest, each with its own ad.
     const ad1 = (await watchAd(app, a, 'pick')).sessionId!;
@@ -197,22 +195,18 @@ describe('end-to-end', () => {
     const startsAfterTip = mk(et(2026, 11, 21, 20), et(2026, 11, 22, 5)); // opens after the 7 PM game starts
     const a = await signUp(app, 'alice', tomorrow);
     for (const id of [endsEarly, endsMidGame, endsAt5am, startsAfterTip]) await app.inject({ method: 'POST', url: `/competitions/${id}/join`, headers: auth(a) });
-    await watchAd(app, a, 'points', endsMidGame);
-    await watchAd(app, a, 'points', endsAt5am);
     const ad1 = (await watchAd(app, a, 'pick')).sessionId!;
     expect((await pick(app, a, { competitionId: endsMidGame, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad1 })).json().error).toBe('after_contest_end');
     expect((await pick(app, a, { competitionId: endsAt5am, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad1 })).statusCode).toBe(200);
     // Tomorrow's contest hasn't opened yet: starting points and picks work anyway.
-    expect((await watchAd(app, a, 'points', tomorrow)).start.statusCode).toBe(200);
-    await watchAd(app, a, 'points', endsEarly);
-    await watchAd(app, a, 'points', startsAfterTip);
+    expect(await mine(app, a, tomorrow)).toMatchObject({ balance: 10, hasStartingPoints: true });
     const ad = (await watchAd(app, a, 'pick')).sessionId!;
     expect((await pick(app, a, { competitionId: endsEarly, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).json().error).toBe('after_contest_end');
     expect((await pick(app, a, { competitionId: startsAfterTip, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).json().error).toBe('before_contest_start');
     expect((await pick(app, a, { competitionId: tomorrow, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).statusCode).toBe(200);
-    const mine = (await app.inject({ method: 'GET', url: `/competitions/${tomorrow}`, headers: auth(a) })).json();
-    expect(mine.competition.status).toBe('upcoming');
-    expect(mine.competition.mine).toMatchObject({ balance: 0, hasStartingPoints: true });
+    const detail = (await app.inject({ method: 'GET', url: `/competitions/${tomorrow}`, headers: auth(a) })).json();
+    expect(detail.competition.status).toBe('upcoming');
+    expect(detail.competition.mine).toMatchObject({ balance: 0, hasStartingPoints: true });
   });
 
   it('takes account deletion requests from the web and lists them for the admin', async () => {
@@ -245,7 +239,6 @@ describe('end-to-end', () => {
     await loadLines();
     for (const eventId of ['g1', 'g2', 'g3']) {
       const a = await signUp(app, `player_${eventId}`, cid);
-      await watchAd(app, a, 'points', cid);
       const ad = (await watchAd(app, a, 'pick')).sessionId!;
       expect((await pick(app, a, { competitionId: cid, eventId, market: 'moneyline', selection: 'home', points: 10, adSessionId: ad })).statusCode).toBe(200);
     }
@@ -269,7 +262,6 @@ describe('end-to-end', () => {
     const { app, db, cid, loadLines, setClock } = setup(et(2026, 11, 21, 12));
     await loadLines();
     const a = await signUp(app, 'chris', cid);
-    await watchAd(app, a, 'points', cid);
     const ad1 = (await watchAd(app, a, 'pick')).sessionId!;
     const made = await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 10, adSessionId: ad1 });
     expect(made.statusCode).toBe(200);
@@ -300,7 +292,6 @@ describe('end-to-end', () => {
     const { app, db, cid, loadLines } = setup(et(2026, 11, 21, 12));
     await loadLines();
     const a = await signUp(app, 'dana', cid);
-    await watchAd(app, a, 'points', cid);
     const uid = (db.prepare("SELECT id FROM users WHERE display_name = 'dana'").get() as { id: string }).id;
     db.prepare('UPDATE competition_entries SET balance = 5 WHERE competition_id = ? AND user_id = ?').run(cid, uid);
     expect((await mine(app, a, cid)).canEarnPoints).toBe(false);
@@ -338,7 +329,6 @@ describe('end-to-end', () => {
     const { app, db, cid, loadLines, setClock } = setup(et(2026, 11, 21, 12));
     await loadLines();
     const e = await signUp(app, 'erin', cid);
-    await watchAd(app, e, 'points', cid);
     const ad = (await watchAd(app, e, 'pick')).sessionId!;
     const placed = await pick(app, e, { competitionId: cid, eventId: 'g1', market: 'spread', selection: 'away', points: 10, adSessionId: ad });
     const pickId = placed.json().pickId as string;
@@ -372,25 +362,28 @@ describe('end-to-end', () => {
     expect((await watchAd(app, e, 'points', cid)).sessionId).not.toBeNull();
   });
 
-  it('allows the starting points plus at most 5 refills a day per contest, only while out of points', async () => {
+  it('gives the starting points on joining, then at most 5 refills a day per contest, only while out of points', async () => {
     const { app, db, cid, setClock } = setup(et(2026, 11, 21, 12));
     const c = await signUp(app, 'carol', cid);
     const spendAll = () => db.prepare('UPDATE competition_entries SET balance = 0 WHERE competition_id = ?').run(cid);
-    // The starting points, then 5 refills.
-    for (let i = 0; i < 6; i++) {
+    // The starting points came with joining, so all 5 videos today are refills.
+    expect(await mine(app, c, cid)).toMatchObject({ balance: 10, pointsAdsToday: 0, hasStartingPoints: true });
+    for (let i = 0; i < 5; i++) {
       spendAll();
       expect((await watchAd(app, c, 'points', cid)).sessionId).not.toBeNull();
     }
     spendAll();
     expect((await watchAd(app, c, 'points', cid)).start.json().error).toBe('daily_limit');
+    expect((await mine(app, c, cid)).pointsAdsToday).toBe(5);
     // A new day (after 5 AM Eastern) resets the count.
     setClock(et(2026, 11, 22, 6));
     expect((await watchAd(app, c, 'points', cid)).sessionId).not.toBeNull();
   });
 
   it('does not pay twice if two points videos were started at once', async () => {
-    const { app, cid } = setup(et(2026, 11, 21, 12));
+    const { app, db, cid } = setup(et(2026, 11, 21, 12));
     const d = await signUp(app, 'dana', cid);
+    db.prepare('UPDATE competition_entries SET balance = 0 WHERE competition_id = ?').run(cid);
     const start = () => app.inject({ method: 'POST', url: '/ads/sessions', headers: auth(d), payload: { purpose: 'points', competitionId: cid } });
     const s1 = (await start()).json().sessionId;
     const s2 = (await start()).json().sessionId;
@@ -403,7 +396,7 @@ describe('end-to-end', () => {
 
 describe('no paid or transferable points', () => {
   it('has no ledger kind for buying, transferring or cashing out', () => {
-    expect([...LEDGER_KINDS]).toEqual(['ad_reward', 'pick_stake', 'pick_won', 'pick_push', 'pick_lost', 'pick_void']);
+    expect([...LEDGER_KINDS]).toEqual(['join_bonus', 'ad_reward', 'pick_stake', 'pick_won', 'pick_push', 'pick_lost', 'pick_void']);
     const db = testDb();
     seedPlayer(db, 'u', 0, 0);
     expect(() =>
@@ -424,7 +417,6 @@ describe('no paid or transferable points', () => {
     const { app, cid, loadLines } = setup(et(2026, 11, 21, 12));
     await loadLines();
     const a = await signUp(app, 'dave', cid);
-    await watchAd(app, a, 'points', cid);
     const ad = (await watchAd(app, a, 'pick')).sessionId!;
     const r = await pick(app, a, { competitionId: cid, eventId: 'g1', market: 'moneyline', selection: 'home', points: 20, adSessionId: ad });
     expect(r.statusCode).toBe(402);

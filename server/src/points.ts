@@ -1,5 +1,6 @@
 // The points ledger. Points live inside a contest: each entry starts at 0 and
-// can only grow by watching rewarded ads or winning picks in that contest.
+// is credited its starting points on joining, and can only grow after that by
+// watching rewarded ads or winning picks in that contest.
 // Points have no cash value and are only spent on picks.
 // There is intentionally no purchase, transfer, gift or cash-out path.
 

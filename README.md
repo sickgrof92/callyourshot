@@ -13,10 +13,11 @@ server/   Node API: cached lines, contests, picks, points, claims, push, admin p
 
 These are enforced in code, not just policy:
 
-- **Nobody can pay for points or buy an edge.** There is no in-app purchase, and the points ledger only accepts `ad_reward` and pick entries; the database rejects any other kind (`server/src/db.ts`).
+- **Nobody can pay for points or buy an edge.** There is no in-app purchase, and the points ledger only accepts the starting points (`join_bonus`), `ad_reward`, and pick entries; the database rejects any other kind (`server/src/db.ts`).
 - **Points can't be cashed out or transferred.** No such endpoint exists, and a test fails if a route with a name like purchase, transfer, gift, withdraw or redeem ever appears (`server/test/api.test.ts`).
 - **Prizes are fixed and announced in advance.** A contest can only be created before it starts, and its prize, cap and dates lock once it starts (`server/src/competitions.ts`). Prizes have no link to ad revenue.
-- **Ad rewards are a flat 10 points**, granted by the server only, after the ad network's signed callback for that player, ad unit and session (`server/src/ads.ts`). The app is never trusted to award points. Points belong to one contest. A player can only watch for points in a contest when they're out there (below 10 points with no picks in play), at most 5 times a day per contest, including the first 10.
+- **Every player gets 10 free starting points when they join a contest**, credited by the server once per player per contest, with no video (`joinCompetition` in `server/src/competitions.ts`). They never count as a refill.
+- **Ad rewards are a flat 10 points**, granted by the server only, after the ad network's signed callback for that player, ad unit and session (`server/src/ads.ts`). The app is never trusted to award points. Points belong to one contest. A player can only watch for points in a contest when they're out there (below 1 point with no picks in play), at most 5 refills a day per contest. The starting points don't count toward the 5.
 - **Every pick needs its own ad.** The app plays it, then the player confirms the pick. The server refuses a pick without a fresh, unused pick ad (`server/src/ads.ts`).
 - **Forfeit:** after a game starts and before it's graded, a player can watch an ad to give up a pick as a loss (no refund). This only gets them back to 0 sooner.
 - User-facing text says "picks", "lines" and "points", and avoids "bet", "wager" and "odds".

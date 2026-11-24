@@ -65,7 +65,7 @@ describe('tiebreakers', () => {
       ['eve', 5],
       ['fay', 5],
     ]);
-    // 3 points videos: the starting points plus 2 refills.
+    // Seeded like a player who joined before starting points came free: 3 points videos are the starting points plus 2 refills.
     expect(s[2]).toMatchObject({ refills: 2, wins: 3, losses: 1, winPct: 0.75 });
 
     // A tie at the very top: both win the full prize.
@@ -180,6 +180,8 @@ describe('ad fraud protection', () => {
     const token = await signUpPlayer(app, 'alice');
     await app.inject({ method: 'POST', url: `/competitions/${r.value.id}/join`, headers: auth(token) });
     const uid = (await app.inject({ method: 'GET', url: '/me', headers: auth(token) })).json().id;
+    // Spend the starting points from joining, so a refill video is allowed.
+    db.prepare('UPDATE competition_entries SET balance = 0 WHERE user_id = ?').run(uid);
     const sid = (await app.inject({ method: 'POST', url: '/ads/sessions', headers: auth(token), payload: { purpose: 'points', competitionId: r.value.id } })).json().sessionId;
 
     // The client can't complete an ad itself.
