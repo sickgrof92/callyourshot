@@ -7,6 +7,7 @@ import { useContests } from '../../lib/contests';
 import { useSession } from '../../lib/session';
 import { colors, glow } from '../../lib/theme';
 
+/** The points total for the contest you're playing, on the tabs inside that contest. */
 function Balance() {
   const { active } = useContests();
   if (!active) return null;
@@ -69,7 +70,8 @@ export default function TabsLayout() {
       }}
     >
       {/* Contests is the home screen. */}
-      <Tabs.Screen name="index" options={{ title: 'Contests', headerTitle: '', tabBarIcon: icon('trophy') }} />
+      {/* Points belong to one contest, so the home screen shows no points total: only the bell. */}
+      <Tabs.Screen name="index" options={{ title: 'Contests', headerTitle: '', headerRight: () => <Bell />, tabBarIcon: icon('trophy') }} />
       <Tabs.Screen name="games" options={{ title: 'Games', tabBarIcon: icon('american-football') }} />
       <Tabs.Screen name="earn" options={{ title: 'Points', tabBarIcon: icon('flash') }} />
       <Tabs.Screen name="mypicks" options={{ title: 'My Picks', tabBarIcon: icon('list') }} />

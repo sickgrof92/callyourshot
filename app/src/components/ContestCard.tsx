@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Contest } from '../lib/api';
-import { contestClock, pts } from '../lib/format';
+import { contestClock } from '../lib/format';
 import { colors, glow, kindColor, space } from '../lib/theme';
 import { GameButton } from './GameButton';
 import { Meter } from './Meter';
@@ -38,10 +38,7 @@ export function ContestCard({ c, onJoin, joining }: { c: Contest; onJoin: (c: Co
         ) : c.status === 'ended' ? (
           <Text style={styles.ended}>{c.winner ? `Winner: ${c.winner}` : 'Final results coming soon'}</Text>
         ) : c.joined ? (
-          <View style={{ flexDirection: 'row', gap: space.sm, alignItems: 'center' }}>
-            <Text style={styles.inPts}>{pts(c.mine?.balance ?? 0)} pts</Text>
-            <GameButton title="You're in · View board" variant="ghost" size="sm" icon="checkmark-circle" style={{ flex: 1 }} onPress={() => router.push(`/contest/${c.id}`)} />
-          </View>
+          <GameButton title="You're in · View board" variant="ghost" size="sm" icon="checkmark-circle" onPress={() => router.push(`/contest/${c.id}`)} />
         ) : full ? (
           <GameButton title="Full" variant="ghost" size="sm" disabled />
         ) : (
@@ -74,6 +71,5 @@ const styles = StyleSheet.create({
   prize: { color: colors.accent, fontSize: 22, fontWeight: '900' },
   entriesRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
   entries: { color: colors.muted, fontSize: 12, fontWeight: '700' },
-  inPts: { color: colors.accent, fontWeight: '900', fontSize: 18, minWidth: 64 },
   ended: { color: colors.gold, fontWeight: '800', textAlign: 'center', padding: space.sm },
 });
