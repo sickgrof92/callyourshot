@@ -135,6 +135,7 @@ export default function ContestScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.meLabel}>{c.status === 'ended' ? 'YOUR FINAL RANK' : 'YOUR RANK'}</Text>
                     <Text style={styles.meScore}>{pts(data.me.score)} pts</Text>
+                    {c.status !== 'ended' && <Text style={styles.meBalance}>{pts(c.mine?.balance ?? 0)} points to pick with</Text>}
                   </View>
                   {c.status !== 'ended' && (
                     <GameButton
@@ -221,6 +222,7 @@ const styles = StyleSheet.create({
   meCard: { flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.cardAlt, borderRadius: 16, padding: space.lg, borderWidth: 2, borderColor: colors.accent, paddingTop: space.lg + 6 },
   meLabel: { color: colors.muted, fontWeight: '900', letterSpacing: 1.5, fontSize: 12 },
   meScore: { color: colors.accent, fontWeight: '900', fontSize: 24 },
+  meBalance: { color: colors.muted, fontWeight: '800', fontSize: 12, marginTop: 2 },
   msg: { color: colors.loss, textAlign: 'center', fontWeight: '700' },
   section: { color: colors.neon, fontWeight: '900', letterSpacing: 2, fontSize: 13, marginTop: space.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.card, borderRadius: 14, padding: space.md, paddingTop: space.md + 4 },
